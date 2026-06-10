@@ -79,6 +79,21 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
+function getBroadcastDateKey(broadcast: DailyBroadcast, firstVisitDate?: string): string | null {
+  const condition = broadcast.condition;
+
+  if (condition.type === "daysSinceStart") {
+    const startDate = firstVisitDate ? parseDateKey(firstVisitDate) : parseDateKey(START_DATE);
+    return getDateKey(addDays(startDate, condition.days));
+  }
+
+  if (condition.type === "date") {
+    return condition.date;
+  }
+
+  return null;
+}
+
 function getStationName(id: string): string {
   return stationNameMap[id] || id;
 }
@@ -613,12 +628,7 @@ export function calculateMissedBroadcasts(
     );
     if (!unlocked) continue;
     
-    const isToday =
-      broadcast.condition.type === "daysSinceStart"
-        ? broadcast.date === todayKey
-        : broadcast.condition.type === "date"
-          ? broadcast.condition.date === todayKey
-          : false;
+    const isToday = getBroadcastDateKey(broadcast, save.firstVisitDate) === todayKey;
     
     if (isToday) continue;
     
@@ -662,13 +672,12 @@ export function getTodayBroadcast(
   favoriteCount: number,
   firstVisitDate?: string
 ): DailyBroadcast | null {
-  const startDate = firstVisitDate ? parseDateKey(firstVisitDate) : parseDateKey(START_DATE);
-  const days = daysBetween(startDate, now);
-  
-  if (days < 0) return null;
-  
+  const todayKey = getDateKey(now);
+
   return dailyBroadcasts.find(
-    b => b.condition.type === "daysSinceStart" && b.condition.days === days
+    b =>
+      getBroadcastDateKey(b, firstVisitDate) === todayKey &&
+      isBroadcastUnlocked(b, now, discoveredStations, favoriteCount, firstVisitDate)
   ) || null;
 }
 

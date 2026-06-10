@@ -14,7 +14,6 @@ import {
   dailyBroadcasts,
   loadDailyBroadcastSave,
   saveDailyBroadcastSave,
-  checkNewlyUnlocked as checkNewlyUnlockedBroadcasts,
   getAvailableBroadcasts,
   isBroadcastUnlocked,
   getBroadcastUnlockHint,
@@ -454,32 +453,14 @@ export default function App() {
   }, [now, dailySave]);
 
   useEffect(() => {
-    const newly = checkNewlyUnlockedBroadcasts(
-      dailyBroadcasts,
-      dailySave,
-      now,
-      save.discovered,
-      save.favorites.length
-    );
-    if (newly.length > 0) {
-      const timestamp = Date.now();
-      setDailySave((current) => {
-        const next = { ...current };
-        next.discoveredBroadcasts = [...next.discoveredBroadcasts, ...newly];
-        next.discoveredAt = { ...next.discoveredAt };
-        for (const id of newly) {
-          next.discoveredAt[id] = timestamp;
-        }
-        return next;
-      });
-      const firstNew = newly[0];
-      const broadcast = dailyBroadcasts.find((b) => b.id === firstNew);
-      if (broadcast) {
-        setNewDailyToast(broadcast.title);
-        setTimeout(() => setNewDailyToast(null), 4000);
-      }
+    if (!todayBroadcast || dailySave.discoveredBroadcasts.includes(todayBroadcast.id)) {
+      return;
     }
-  }, [now, save.discovered, save.favorites.length, dailySave]);
+
+    setDailySave((current) => discoverTodayBroadcast(current, todayBroadcast.id));
+    setNewDailyToast(todayBroadcast.title);
+    setTimeout(() => setNewDailyToast(null), 4000);
+  }, [todayBroadcast, dailySave.discoveredBroadcasts]);
 
   useEffect(() => {
     saveDailyBroadcastSave(dailySave);

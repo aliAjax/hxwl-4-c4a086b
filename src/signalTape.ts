@@ -5,6 +5,8 @@ export type SignalTape = {
   frequency: number;
   color: string;
   scheduleName: string | null;
+  scheduleStartTime: string | null;
+  scheduleEndTime: string | null;
   content: string;
   savedAt: number;
   isAnomaly?: boolean;
@@ -15,7 +17,7 @@ export type SignalTapeSave = {
   tapes: SignalTape[];
 };
 
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 const STORAGE_KEY = "hxwl-4-signal-tapes";
 
 export function loadSignalTapes(): SignalTapeSave {
@@ -48,9 +50,15 @@ function createNewSave(): SignalTapeSave {
 }
 
 function migrateSave(data: Partial<SignalTapeSave> & { version?: number }): SignalTapeSave {
+  const migratedTapes = (data.tapes || []).map((tape) => ({
+    ...tape,
+    scheduleStartTime: (tape as SignalTape).scheduleStartTime ?? null,
+    scheduleEndTime: (tape as SignalTape).scheduleEndTime ?? null
+  }));
+
   return {
     version: STORAGE_VERSION,
-    tapes: data.tapes || []
+    tapes: migratedTapes
   };
 }
 

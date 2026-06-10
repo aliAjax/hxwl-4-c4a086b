@@ -488,6 +488,8 @@ export default function App() {
   function handleRecordTape() {
     if (!currentStation || !displayBroadcast) return;
 
+    const currentSchedule = getCurrentSchedule(currentStation, now);
+
     setSignalTapeSave((current) =>
       addSignalTape(current, {
         stationId: currentStation.id,
@@ -495,6 +497,8 @@ export default function App() {
         frequency: currentStation.frequency,
         color: currentStation.color,
         scheduleName: displayBroadcast.scheduleName,
+        scheduleStartTime: currentSchedule?.startTime ?? null,
+        scheduleEndTime: currentSchedule?.endTime ?? null,
         content: displayBroadcast.message,
         isAnomaly: !!currentDailyMessage
       })
@@ -1952,6 +1956,11 @@ export default function App() {
                 {activeTape.scheduleName && (
                   <div className="tape-reader-schedule">
                     <span className="schedule-tag">▸ {activeTape.scheduleName}</span>
+                    {activeTape.scheduleStartTime && activeTape.scheduleEndTime && (
+                      <span className="schedule-time-tag">
+                        ⏰ {activeTape.scheduleStartTime} — {activeTape.scheduleEndTime}
+                      </span>
+                    )}
                     {activeTape.isAnomaly && (
                       <span className="anomaly-tag">⚠ 异常广播</span>
                     )}
@@ -1959,6 +1968,21 @@ export default function App() {
                 )}
 
                 <div className="tape-reader-meta">
+                  <div className="tape-meta-row">
+                    <label>电台频率</label>
+                    <span>{activeTape.frequency.toFixed(1)} MHz</span>
+                  </div>
+                  {activeTape.scheduleName && (
+                    <div className="tape-meta-row">
+                      <label>节目时段</label>
+                      <span>
+                        {activeTape.scheduleName}
+                        {activeTape.scheduleStartTime && activeTape.scheduleEndTime && (
+                          <> · {activeTape.scheduleStartTime} — {activeTape.scheduleEndTime}</>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div className="tape-meta-row">
                     <label>保存时间</label>
                     <span>{formatTapeDetailTime(activeTape.savedAt)}</span>

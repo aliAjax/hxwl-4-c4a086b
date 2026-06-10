@@ -56,11 +56,15 @@ const stationNameMap: Record<string, string> = {
 };
 
 function getDateKey(date: Date): string {
-  return date.toISOString().split("T")[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function parseDateKey(dateStr: string): Date {
-  return new Date(dateStr + "T00:00:00");
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function daysBetween(date1: Date, date2: Date): number {
@@ -594,16 +598,78 @@ export function calculateMissedBroadcasts(
 ): string[] {
   if (!save.firstVisitDate) return [];
   
-  const available = getAvailableBroadcasts(now, discoveredStations, favoriteCount, save.firstVisitDate);
+  const todayKey = getDateKey(now);
   const missed: string[] = [];
   
-  for (const broadcast of available) {
-    if (!save.discoveredBroadcasts.includes(broadcast.id) && !save.catchUpCompleted.includes(broadcast.id)) {
-      missed.push(broadcast.id);
-    }
+  for (const broadcast of dailyBroadcasts) {
+    if (save.discoveredBroadcasts.includes(broadcast.id)) continue;
+    
+    const unlocked = isBroadcastUnlocked(
+      broadcast,
+      now,
+      discoveredStations,
+      favoriteCount,
+      save.firstVisitDate
+    );
+    if (!unlocked) continue;
+    
+    const isToday =
+      broadcast.condition.type === "daysSinceStart"
+        ? broadcast.date === todayKey
+        : broadcast.condition.type === "date"
+          ? broadcast.condition.date === todayKey
+          : false;
+    
+    if (isToday) continue;
+    
+    missed.push(broadcast.id);
   }
   
   return missed;
+}
+
+export type BroadcastState = "locked" | "available-missed" | "discovered";
+
+export function getBroadcastState(
+  broadcast: DailyBroadcast,
+  save: DailyBroadcastSave,
+  now: Date,
+  discoveredStations: string[],
+  favoriteCount: number
+): BroadcastState {
+  if (save.discoveredBroadcasts.includes(broadcast.id)) {
+    return "discovered";
+  }
+  
+  const unlocked = isBroadcastUnlocked(
+    broadcast,
+    now,
+    discoveredStations,
+    favoriteCount,
+    save.firstVisitDate
+  );
+  
+  if (!unlocked) {
+    return "locked";
+  }
+  
+  return "available-missed";
+}
+
+export function getTodayBroadcast(
+  now: Date,
+  discoveredStations: string[],
+  favoriteCount: number,
+  firstVisitDate?: string
+): DailyBroadcast | null {
+  const startDate = firstVisitDate ? parseDateKey(firstVisitDate) : parseDateKey(START_DATE);
+  const days = daysBetween(startDate, now);
+  
+  if (days < 0) return null;
+  
+  return dailyBroadcasts.find(
+    b => b.condition.type === "daysSinceStart" && b.condition.days === days
+  ) || null;
 }
 
 export function catchUpBroadcast(
@@ -614,14 +680,28 @@ export function catchUpBroadcast(
   if (!broadcast) return save;
   if (save.discoveredBroadcasts.includes(broadcastId)) return save;
   
-  const now = Date.now();
-  const next = { ...save };
-  next.discoveredBroadcasts = [...next.discoveredBroadcasts, broadcastId];
-  next.discoveredAt = { ...next.discoveredAt, [broadcastId]: now };
-  next.catchUpCompleted = [...next.catchUpCompleted, broadcastId];
-  next.missedCatchUps = next.missedCatchUps.filter(id => id !== broadcastId);
+  const ts = Date.now();
+  return {
+    ...save,
+    discoveredBroadcasts: [...save.discoveredBroadcasts, broadcastId],
+    discoveredAt: { ...save.discoveredAt, [broadcastId]: ts },
+    catchUpCompleted: [...save.catchUpCompleted, broadcastId],
+    missedCatchUps: save.missedCatchUps.filter(id => id !== broadcastId)
+  };
+}
+
+export function discoverTodayBroadcast(
+  save: DailyBroadcastSave,
+  broadcastId: string
+): DailyBroadcastSave {
+  if (save.discoveredBroadcasts.includes(broadcastId)) return save;
   
-  return next;
+  const ts = Date.now();
+  return {
+    ...save,
+    discoveredBroadcasts: [...save.discoveredBroadcasts, broadcastId],
+    discoveredAt: { ...save.discoveredAt, [broadcastId]: ts }
+  };
 }
 
 export function updateVisitTimestamp(save: DailyBroadcastSave, now: Date): DailyBroadcastSave {

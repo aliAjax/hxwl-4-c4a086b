@@ -21,10 +21,13 @@ import {
   getCurrentDayMessage,
   calculateMissedBroadcasts,
   catchUpBroadcast,
+  discoverTodayBroadcast,
   updateVisitTimestamp,
   getDayNumber,
   getAnomalyLevelLabel,
   getAnomalyLevelColor,
+  getBroadcastState,
+  getTodayBroadcast,
   type DailyBroadcastSave,
   type DailyBroadcast,
   type DailyFragment
@@ -337,6 +340,33 @@ export default function App() {
     if (!currentStation) return null;
     return getStationMessage(currentStation, now);
   }, [currentStation, now]);
+
+  const currentDailyMessage = useMemo(() => {
+    if (!currentStation || currentStation.isCustom) return null;
+    return getCurrentDayMessage(
+      currentStation.id,
+      now,
+      save.discovered,
+      save.favorites.length,
+      dailySave
+    );
+  }, [currentStation, now, save.discovered, save.favorites.length, dailySave]);
+
+  const todayBroadcast = useMemo(
+    () => getTodayBroadcast(now, save.discovered, save.favorites.length, dailySave.firstVisitDate),
+    [now, save.discovered, save.favorites.length, dailySave.firstVisitDate]
+  );
+
+  const displayBroadcast = useMemo(() => {
+    if (!currentBroadcast) return null;
+    if (!currentDailyMessage) return currentBroadcast;
+    return {
+      message: currentDailyMessage.content,
+      scheduleName: currentBroadcast.scheduleName
+        ? `${currentBroadcast.scheduleName} · 异常信号`
+        : "异常信号"
+    };
+  }, [currentBroadcast, currentDailyMessage]);
 
   const favoriteStations = useMemo(
     () =>
@@ -809,15 +839,16 @@ export default function App() {
 
       <section className="console">
         <div className="dial-panel">
-          <div className={`screen ${isScanning ? "scanning" : ""} ${scanPaused ? "paused" : ""}`} style={{ "--noise": `${noise}%` } as React.CSSProperties}>
+          <div className={`screen ${isScanning ? "scanning" : ""} ${scanPaused ? "paused" : ""} ${currentDailyMessage ? "anomaly" : ""}`} style={{ "--noise": `${noise}%` } as React.CSSProperties}>
             <span>
               {frequency.toFixed(1)} MHz
               {isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
-              {currentBroadcast?.scheduleName && <em className="schedule-tag">▸ {currentBroadcast.scheduleName}</em>}
+              {displayBroadcast?.scheduleName && <em className="schedule-tag">▸ {displayBroadcast.scheduleName}</em>}
+              {currentDailyMessage && <em className="anomaly-tag">⚠ 异常广播</em>}
               {currentStation?.isCustom && <em className="custom-tag">自建</em>}
             </span>
             <strong>{currentStation ? currentStation.name : "沙沙声"}</strong>
-            <p>{currentBroadcast ? currentBroadcast.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
+            <p>{displayBroadcast ? displayBroadcast.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
           </div>
           <div className="scan-controls">
             <button className={`scan-btn ${isScanning ? "active" : ""}`} onClick={toggleScan}>
@@ -854,16 +885,26 @@ export default function App() {
               const note = save.notes[station.id];
               const isEditing = editingNoteId === station.id;
               const stationBroadcast = found ? getStationMessage(station, now) : null;
+              const stationDailyMsg = found && !station.isCustom
+                ? getCurrentDayMessage(station.id, now, save.discovered, save.favorites.length, dailySave)
+                : null;
+              const stationDisplayMsg = stationDailyMsg
+                ? stationDailyMsg.content
+                : stationBroadcast?.message ?? station.message;
+              const stationScheduleLabel = stationDailyMsg
+                ? (stationBroadcast?.scheduleName ? `${stationBroadcast.scheduleName} · 异常信号` : "异常信号")
+                : stationBroadcast?.scheduleName;
               return (
                 <article key={station.id} className={found ? "found" : ""}>
                   <span style={{ background: station.color }}>{found ? station.frequency.toFixed(1) : "??"}</span>
                   <div>
                     <strong>
                       {found ? station.name : "未识别频段"}
-                      {stationBroadcast?.scheduleName && <em className="schedule-tag-inline">▸ {stationBroadcast.scheduleName}</em>}
+                      {stationScheduleLabel && <em className="schedule-tag-inline">▸ {stationScheduleLabel}</em>}
+                      {stationDailyMsg && <em className="anomaly-tag-inline">⚠ 异常</em>}
                       {station.isCustom && <em className="custom-tag-inline">自建</em>}
                     </strong>
-                    <p>{found ? stationBroadcast?.message ?? station.message : "继续调频寻找它。"}</p>
+                    <p>{found ? stationDisplayMsg : "继续调频寻找它。"}</p>
                     {found && note && !isEditing && (
                       <p className="note-preview">📝 {note.length > 30 ? note.slice(0, 30) + "…" : note}</p>
                     )}
@@ -917,6 +958,15 @@ export default function App() {
               const isFavorite = save.favorites.includes(station.id);
               const discoveredAt = save.discoveredAt[station.id];
               const stationBroadcast = found ? getStationMessage(station, now) : null;
+              const stationDailyMsg = found && !station.isCustom
+                ? getCurrentDayMessage(station.id, now, save.discovered, save.favorites.length, dailySave)
+                : null;
+              const archiveScheduleLabel = stationDailyMsg
+                ? (stationBroadcast?.scheduleName ? `${stationBroadcast.scheduleName} · 异常信号` : "异常信号")
+                : stationBroadcast?.scheduleName;
+              const archiveDisplayMsg = stationDailyMsg
+                ? stationDailyMsg.content
+                : stationBroadcast?.message ?? station.message;
 
               return (
                 <article
@@ -931,7 +981,8 @@ export default function App() {
                     <div className="archive-info">
                       <strong>
                         {found ? station.name : "未知记录"}
-                        {stationBroadcast?.scheduleName && <em className="schedule-tag-inline">▸ {stationBroadcast.scheduleName}</em>}
+                        {archiveScheduleLabel && <em className="schedule-tag-inline">▸ {archiveScheduleLabel}</em>}
+                        {stationDailyMsg && <em className="anomaly-tag-inline">⚠ 异常</em>}
                         {station.isCustom && <em className="custom-tag-inline">自建</em>}
                       </strong>
                       {found ? (
@@ -962,10 +1013,10 @@ export default function App() {
                       <div className="detail-row">
                         <label>当前播报</label>
                         <p className="broadcast-text">
-                          {stationBroadcast?.scheduleName && (
-                            <em className="schedule-tag-inline schedule-tag-archive">▸ {stationBroadcast.scheduleName}</em>
+                          {archiveScheduleLabel && (
+                            <em className="schedule-tag-inline schedule-tag-archive">▸ {archiveScheduleLabel}</em>
                           )}
-                          {stationBroadcast?.message ?? station.message}
+                          {archiveDisplayMsg}
                         </p>
                       </div>
                       {station.schedules.length > 0 && (
@@ -1501,31 +1552,31 @@ export default function App() {
           {!activeDailyBroadcast && (
             <div className="daily-broadcast-list">
               {dailyBroadcasts.map((broadcast) => {
-                const isDiscovered = dailySave.discoveredBroadcasts.includes(broadcast.id);
-                const isMissed = missedBroadcasts.includes(broadcast.id);
+                const bState = getBroadcastState(broadcast, dailySave, now, save.discovered, save.favorites.length);
+                const isDiscovered = bState === "discovered";
+                const isMissed = bState === "available-missed";
                 const totalFragments = broadcast.fragments.length;
                 const readFragments = broadcast.fragments.filter((f) =>
                   dailySave.readFragments.includes(f.id)
                 ).length;
-                const dayNum = getDayNumber(broadcast, dailySave.firstVisitDate);
                 const anomalyColor = getAnomalyLevelColor(broadcast.anomalyLevel);
                 const anomalyLabel = getAnomalyLevelLabel(broadcast.anomalyLevel);
 
                 return (
                   <article
                     key={broadcast.id}
-                    className={`daily-broadcast-card ${isDiscovered ? "discovered" : "locked"} ${isMissed ? "missed" : ""}`}
+                    className={`daily-broadcast-card ${bState} `}
                     onClick={() => isDiscovered && openDailyDetail(broadcast.id)}
                   >
                     <div
                       className="daily-broadcast-icon"
-                      style={{ background: isDiscovered ? broadcast.color : "#2d3434" }}
+                      style={{ background: isDiscovered ? broadcast.color : isMissed ? `${broadcast.color}60` : "#2d3434" }}
                     >
-                      {isDiscovered ? "📡" : "🔒"}
+                      {isDiscovered ? "📡" : isMissed ? "⏰" : "🔒"}
                     </div>
                     <div className="daily-broadcast-info">
                       <div className="daily-broadcast-header">
-                        <strong style={{ color: isDiscovered ? broadcast.color : "#5a6b6d" }}>
+                        <strong style={{ color: isDiscovered ? broadcast.color : isMissed ? broadcast.color : "#5a6b6d" }}>
                           {broadcast.title}
                         </strong>
                         <span
@@ -1552,7 +1603,7 @@ export default function App() {
                         </div>
                       ) : isMissed ? (
                         <div className="daily-catchup-section">
-                          <p className="daily-unlock-hint">{getBroadcastUnlockHint(broadcast)}</p>
+                          <p className="daily-unlock-hint">条件已满足，可补收听</p>
                           <button
                             className="daily-catchup-btn"
                             onClick={(e) => {

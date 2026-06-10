@@ -102,6 +102,13 @@ function formatLastListenedTime(timestamp: number | undefined): string {
   });
 }
 
+const SCAN_SPEED = 0.08;
+const SCAN_INTERVAL = 60;
+const SCAN_PAUSE_THRESHOLD = 55;
+const SCAN_LOCK_THRESHOLD = 74;
+const SCAN_PAUSE_DURATION = 1200;
+const SCAN_LOCK_DURATION = 2500;
+
 export default function App() {
   const [frequency, setFrequency] = useState(90.1);
   const [save, setSave] = useState<RadioSave>(loadSave);
@@ -109,6 +116,9 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanDirection, setScanDirection] = useState<1 | -1>(1);
+  const [scanPaused, setScanPaused] = useState(false);
 
   const tuned = useMemo(
     () => stations.map((station) => ({ station, signal: signalFor(frequency, station) })).sort((a, b) => b.signal - a.signal)[0],
@@ -153,6 +163,60 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(save));
   }, [save]);
+
+  useEffect(() => {
+    if (!isScanning || scanPaused) return;
+
+    const interval = setInterval(() => {
+      setFrequency((prev) => {
+        const next = prev + SCAN_SPEED * scanDirection;
+        if (next >= 108) {
+          setScanDirection(-1);
+          return 108;
+        }
+        if (next <= 87.5) {
+          setScanDirection(1);
+          return 87.5;
+        }
+        return Number(next.toFixed(1));
+      });
+    }, SCAN_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [isScanning, scanPaused, scanDirection]);
+
+  useEffect(() => {
+    if (!isScanning) return;
+
+    const signal = tuned.signal;
+    if (signal >= SCAN_LOCK_THRESHOLD) {
+      setScanPaused(true);
+      const timer = setTimeout(() => setScanPaused(false), SCAN_LOCK_DURATION);
+      return () => clearTimeout(timer);
+    } else if (signal >= SCAN_PAUSE_THRESHOLD) {
+      setScanPaused(true);
+      const timer = setTimeout(() => setScanPaused(false), SCAN_PAUSE_DURATION);
+      return () => clearTimeout(timer);
+    }
+  }, [tuned.signal, isScanning]);
+
+  function toggleScan() {
+    if (isScanning) {
+      setIsScanning(false);
+      setScanPaused(false);
+    } else {
+      setIsScanning(true);
+      setScanPaused(false);
+    }
+  }
+
+  function handleFrequencyChange(value: number) {
+    if (isScanning) {
+      setIsScanning(false);
+      setScanPaused(false);
+    }
+    setFrequency(value);
+  }
 
   function toggleFavorite(id: string) {
     setSave((current) => ({
@@ -207,13 +271,37 @@ export default function App() {
 
       <section className="console">
         <div className="dial-panel">
-          <div className="screen" style={{ "--noise": `${noise}%` } as React.CSSProperties}>
-            <span>{frequency.toFixed(1)} MHz</span>
+          <div className={`screen ${isScanning ? "scanning" : ""} ${scanPaused ? "paused" : ""}`} style={{ "--noise": `${noise}%` } as React.CSSProperties}>
+            <span>
+              {frequency.toFixed(1)} MHz
+              {isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
+            </span>
             <strong>{currentStation ? currentStation.name : "沙沙声"}</strong>
-            <p>{currentStation ? currentStation.message : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
+            <p>{currentStation ? currentStation.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
           </div>
-          <input min="87.5" max="108" step="0.1" value={frequency} onChange={(event) => setFrequency(Number(event.target.value))} type="range" />
-          <div className="meter">
+          <div className="scan-controls">
+            <button className={`scan-btn ${isScanning ? "active" : ""}`} onClick={toggleScan}>
+              {isScanning ? "⏹ 停止扫描" : "▶ 信号扫描"}
+            </button>
+            <div className="scan-direction">
+              <button
+                className={`dir-btn ${scanDirection === 1 ? "" : "active"}`}
+                onClick={() => isScanning && setScanDirection(-1)}
+                disabled={!isScanning}
+              >
+                ◀
+              </button>
+              <button
+                className={`dir-btn ${scanDirection === 1 ? "active" : ""}`}
+                onClick={() => isScanning && setScanDirection(1)}
+                disabled={!isScanning}
+              >
+                ▶
+              </button>
+            </div>
+          </div>
+          <input min="87.5" max="108" step="0.1" value={frequency} onChange={(event) => handleFrequencyChange(Number(event.target.value))} type="range" />
+          <div className={`meter ${isScanning ? "scanning" : ""} ${scanPaused ? "pulsing" : ""}`}>
             <i style={{ width: `${Math.round(tuned.signal)}%`, background: currentStation?.color ?? "#9aa0a6" }} />
           </div>
         </div>

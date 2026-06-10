@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
+type Schedule = {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  message: string;
+};
+
 type Station = {
   id: string;
   name: string;
   frequency: number;
   color: string;
   message: string;
+  schedules: Schedule[];
 };
 
 type RadioSave = {
@@ -20,11 +29,91 @@ const storageKey = "hxwl-4-radio";
 const NOTE_MAX_LENGTH = 200;
 
 const stations: Station[] = [
-  { id: "rain", name: "雨棚旧讯号", frequency: 88.7, color: "#61a5c2", message: "今晚的雨会绕过屋顶，落在所有没寄出的信上。" },
-  { id: "salt", name: "盐湖观测站", frequency: 93.4, color: "#e8c36a", message: "湖面亮度稳定，南岸有三次短暂闪烁，原因未明。" },
-  { id: "train", name: "末班列车台", frequency: 101.2, color: "#a06cd5", message: "下一站无人下车，但有人把一枚纽扣留在座位上。" },
-  { id: "green", name: "温室低语", frequency: 106.6, color: "#5aa86a", message: "第七盆植物在凌晨两点转向了没有窗的墙。" }
+  {
+    id: "rain",
+    name: "雨棚旧讯号",
+    frequency: 88.7,
+    color: "#61a5c2",
+    message: "今晚的雨会绕过屋顶，落在所有没寄出的信上。",
+    schedules: [
+      { id: "rain-morning", name: "清晨微雨", startTime: "06:00", endTime: "09:00", message: "晨雨打在镀锌铁皮上，像有人在敲一封没人拆的信。" },
+      { id: "rain-noon", name: "午后阵雨", startTime: "12:00", endTime: "14:00", message: "午后阵雨把街道洗干净，也把昨天的脚印冲散了。" },
+      { id: "rain-evening", name: "傍晚密雨", startTime: "17:30", endTime: "20:00", message: "傍晚的雨丝里裹着饭菜香，有人在窗边等一个不会来的人。" },
+      { id: "rain-night", name: "深夜夜雨", startTime: "23:00", endTime: "03:00", message: "夜雨绕过屋顶，落在所有没寄出的信上，字迹慢慢晕开。" }
+    ]
+  },
+  {
+    id: "salt",
+    name: "盐湖观测站",
+    frequency: 93.4,
+    color: "#e8c36a",
+    message: "湖面亮度稳定，南岸有三次短暂闪烁，原因未明。",
+    schedules: [
+      { id: "salt-dawn", name: "黎明观测", startTime: "04:00", endTime: "07:00", message: "东方地平线泛白，湖面开始反射第一缕光，能见度在上升。" },
+      { id: "salt-noon", name: "正午强光", startTime: "11:00", endTime: "14:30", message: "湖面亮度峰值，盐晶反射出上千个小太阳，记得戴墨镜。" },
+      { id: "salt-dusk", name: "黄昏闪光", startTime: "18:00", endTime: "20:30", message: "南岸有三次短暂闪烁，像是某种摩斯电码，但我们解码不出。" },
+      { id: "salt-late", name: "深夜静息", startTime: "00:30", endTime: "03:30", message: "湖面陷入绝对黑暗，只有仪器的小红灯在轻轻闪烁。" }
+    ]
+  },
+  {
+    id: "train",
+    name: "末班列车台",
+    frequency: 101.2,
+    color: "#a06cd5",
+    message: "下一站无人下车，但有人把一枚纽扣留在座位上。",
+    schedules: [
+      { id: "train-morning", name: "早班通勤", startTime: "06:30", endTime: "09:30", message: "早班列车载着困倦的人，每个人都在补昨晚没睡够的觉。" },
+      { id: "train-evening", name: "晚高峰", startTime: "17:00", endTime: "19:30", message: "晚高峰的车厢里挤满了想回家的人，广播在提醒注意脚下。" },
+      { id: "train-last", name: "末班车", startTime: "22:00", endTime: "00:30", message: "这是今日最后一班车。下一站无人下车，但有人把一枚纽扣留在座位上。" },
+      { id: "train-empty", name: "凌晨空车", startTime: "02:00", endTime: "04:30", message: "空列车在线路上来回跑，像在等一个永远不会出现的乘客。" }
+    ]
+  },
+  {
+    id: "green",
+    name: "温室低语",
+    frequency: 106.6,
+    color: "#5aa86a",
+    message: "第七盆植物在凌晨两点转向了没有窗的墙。",
+    schedules: [
+      { id: "green-morning", name: "晨间舒展", startTime: "07:00", endTime: "10:00", message: "晨光穿过玻璃，叶片们慢慢舒展开，像是在集体伸懒腰。" },
+      { id: "green-afternoon", name: "午后生长", startTime: "13:00", endTime: "16:00", message: "生长的声音很轻，你得凑近才能听见——像骨头在轻轻响。" },
+      { id: "green-dusk", name: "黄昏浇灌", startTime: "18:00", endTime: "19:30", message: "浇水时间到了。水珠落在叶片上，每一棵都在说谢谢。" },
+      { id: "green-night", name: "深夜转向", startTime: "01:00", endTime: "03:30", message: "第七盆植物在凌晨两点转向了没有窗的墙，它在看什么？" }
+    ]
+  }
 ];
+
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function isTimeInSlot(currentMinutes: number, startMinutes: number, endMinutes: number): boolean {
+  if (startMinutes <= endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+}
+
+function getCurrentSchedule(station: Station, now: Date): Schedule | null {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  for (const schedule of station.schedules) {
+    const start = timeToMinutes(schedule.startTime);
+    const end = timeToMinutes(schedule.endTime);
+    if (isTimeInSlot(currentMinutes, start, end)) {
+      return schedule;
+    }
+  }
+  return null;
+}
+
+function getStationMessage(station: Station, now: Date): { message: string; scheduleName: string | null } {
+  const schedule = getCurrentSchedule(station, now);
+  if (schedule) {
+    return { message: schedule.message, scheduleName: schedule.name };
+  }
+  return { message: station.message, scheduleName: null };
+}
 
 function loadSave(): RadioSave {
   try {
@@ -119,6 +208,12 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanDirection, setScanDirection] = useState<1 | -1>(1);
   const [scanPaused, setScanPaused] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const tuned = useMemo(
     () => stations.map((station) => ({ station, signal: signalFor(frequency, station) })).sort((a, b) => b.signal - a.signal)[0],
@@ -126,6 +221,11 @@ export default function App() {
   );
   const currentStation = tuned.signal >= 74 ? tuned.station : null;
   const noise = Math.round(100 - tuned.signal);
+
+  const currentBroadcast = useMemo(() => {
+    if (!currentStation) return null;
+    return getStationMessage(currentStation, now);
+  }, [currentStation, now]);
 
   const favoriteStations = useMemo(
     () =>
@@ -275,9 +375,10 @@ export default function App() {
             <span>
               {frequency.toFixed(1)} MHz
               {isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
+              {currentBroadcast?.scheduleName && <em className="schedule-tag">▸ {currentBroadcast.scheduleName}</em>}
             </span>
             <strong>{currentStation ? currentStation.name : "沙沙声"}</strong>
-            <p>{currentStation ? currentStation.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
+            <p>{currentBroadcast ? currentBroadcast.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
           </div>
           <div className="scan-controls">
             <button className={`scan-btn ${isScanning ? "active" : ""}`} onClick={toggleScan}>
@@ -313,12 +414,16 @@ export default function App() {
               const found = save.discovered.includes(station.id);
               const note = save.notes[station.id];
               const isEditing = editingNoteId === station.id;
+              const stationBroadcast = found ? getStationMessage(station, now) : null;
               return (
                 <article key={station.id} className={found ? "found" : ""}>
                   <span style={{ background: station.color }}>{found ? station.frequency.toFixed(1) : "??"}</span>
                   <div>
-                    <strong>{found ? station.name : "未识别频段"}</strong>
-                    <p>{found ? station.message : "继续调频寻找它。"}</p>
+                    <strong>
+                      {found ? station.name : "未识别频段"}
+                      {stationBroadcast?.scheduleName && <em className="schedule-tag-inline">▸ {stationBroadcast.scheduleName}</em>}
+                    </strong>
+                    <p>{found ? stationBroadcast?.message ?? station.message : "继续调频寻找它。"}</p>
                     {found && note && !isEditing && (
                       <p className="note-preview">📝 {note.length > 30 ? note.slice(0, 30) + "…" : note}</p>
                     )}
@@ -371,6 +476,7 @@ export default function App() {
               const isExpanded = expandedArchive === station.id;
               const isFavorite = save.favorites.includes(station.id);
               const discoveredAt = save.discoveredAt[station.id];
+              const stationBroadcast = found ? getStationMessage(station, now) : null;
 
               return (
                 <article
@@ -383,7 +489,10 @@ export default function App() {
                       {found ? station.frequency.toFixed(1) : "??"}
                     </span>
                     <div className="archive-info">
-                      <strong>{found ? station.name : "未知记录"}</strong>
+                      <strong>
+                        {found ? station.name : "未知记录"}
+                        {stationBroadcast?.scheduleName && <em className="schedule-tag-inline">▸ {stationBroadcast.scheduleName}</em>}
+                      </strong>
                       {found ? (
                         <p className="archive-time">{formatDiscoveredTime(discoveredAt)}</p>
                       ) : (
@@ -410,8 +519,30 @@ export default function App() {
                         <span>{station.name}</span>
                       </div>
                       <div className="detail-row">
-                        <label>广播文本</label>
-                        <p className="broadcast-text">{station.message}</p>
+                        <label>当前播报</label>
+                        <p className="broadcast-text">
+                          {stationBroadcast?.scheduleName && (
+                            <em className="schedule-tag-inline schedule-tag-archive">▸ {stationBroadcast.scheduleName}</em>
+                          )}
+                          {stationBroadcast?.message ?? station.message}
+                        </p>
+                      </div>
+                      <div className="detail-row detail-row-schedules">
+                        <label>节目时段</label>
+                        <div className="schedules-list">
+                          {station.schedules.map((schedule) => {
+                            const isActive = stationBroadcast?.scheduleName === schedule.name;
+                            return (
+                              <div key={schedule.id} className={`schedule-item ${isActive ? "active" : ""}`}>
+                                <div className="schedule-item-header">
+                                  <span className="schedule-name">{schedule.name}</span>
+                                  <span className="schedule-time">{schedule.startTime} — {schedule.endTime}</span>
+                                </div>
+                                <p className="schedule-message">{schedule.message}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="detail-row">
                         <label>发现时间</label>

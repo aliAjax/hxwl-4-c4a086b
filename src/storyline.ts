@@ -1,8 +1,10 @@
 export type UnlockCondition =
   | { type: "discoverStation"; stationId: string }
   | { type: "discoverCount"; count: number }
+  | { type: "discoverStations"; stationIds: string[] }
   | { type: "favoriteStation"; stationId: string }
-  | { type: "favoriteCount"; count: number };
+  | { type: "favoriteCount"; count: number }
+  | { type: "favoriteStations"; stationIds: string[] };
 
 export type StoryFragment = {
   id: string;
@@ -27,6 +29,17 @@ export type StorylineSave = {
   unlockedAt: Record<string, number>;
   lastReadAt: Record<string, number>;
 };
+
+const stationNameMap: Record<string, string> = {
+  rain: "雨棚旧讯号",
+  salt: "盐湖观测站",
+  train: "末班列车台",
+  green: "温室低语"
+};
+
+function getStationNames(ids: string[]): string[] {
+  return ids.map((id) => stationNameMap[id] || id);
+}
 
 export const storyChapters: StoryChapter[] = [
   {
@@ -207,6 +220,103 @@ export const storyChapters: StoryChapter[] = [
         content: "作为全频段档案员，\n你有一个特权。\n\n每当你打开收音机，\n四个电台会同时用很轻的声音说——\n「你来了。」\n\n只有你能听到。\n只有收藏了全部四个的人，\n才能解锁这句问候。\n\n它很轻，\n藏在沙沙的静电声里。\n但只要你仔细听，\n就一定能听到。\n\n因为，\n它们也一直在等你回来。\n\n——欢迎回家，档案员。"
       }
     ]
+  },
+  {
+    id: "combo-rain-train",
+    title: "组合章 · 雨夜末班车",
+    subtitle: "当雨声遇上末班车的广播",
+    color: "#6a8fd4",
+    condition: { type: "discoverStations", stationIds: ["rain", "train"] },
+    fragments: [
+      {
+        id: "combo-rt-1",
+        title: "交叉路口",
+        content: "你同时发现了「雨棚旧讯号」和「末班列车台」。\n\n这两个电台之间，\n似乎有一种奇妙的共鸣。\n\n下雨天的末班车，\n车窗上凝结着水汽。\n广播里念着没人收件的信，\n铁轨发出有节奏的声响。\n\n你调回 88.7，\n主持人说：\n「今晚的最后一封信，\n写给在末班车上的某个人。」\n\n然后你调到 101.2，\n广播员说：\n「下一站，有人下车。」\n\n这是她们第一次，\n打破了各自的惯例。"
+      },
+      {
+        id: "combo-rt-2",
+        title: "同一座城市的孤独",
+        content: "你开始在下雨的夜晚，\n来回切换这两个频率。\n\n88.7 在说：\n「今天的雨下得很大，记得带伞。」\n\n101.2 在说：\n「2号车厢靠窗的座位，有一把忘记带走的伞。」\n\n你忽然明白了什么。\n\n那些没寄出的信，\n那些遗落的纽扣，\n那些没人下车的站台，\n那些永远在等的人——\n\n他们都在同一座城市里，\n只是彼此错过。\n\n而你，\n是唯一同时听到两边的人。"
+      }
+    ]
+  },
+  {
+    id: "combo-salt-green",
+    title: "组合章 · 盐湖与温室",
+    subtitle: "南岸的闪烁和第七盆植物的秘密",
+    color: "#a8c26a",
+    condition: { type: "discoverStations", stationIds: ["salt", "green"] },
+    fragments: [
+      {
+        id: "combo-sg-1",
+        title: "光的传递",
+        content: "你同时发现了「盐湖观测站」和「温室低语」。\n\n南岸的闪烁，\n墙后的敲击，\n这两个看似无关的地方，\n在某个频率上共振着。\n\n你记录了盐湖的闪烁节奏——\n长，短，长，短，\n短，长，短，长。\n\n然后你在凌晨两点来到温室，\n把耳朵贴在那面墙上。\n\n敲击声是——\n长，短，长，短，\n短，长，短，长。\n\n一模一样的节奏。\n\n她们在对话。\n隔着几百公里的距离，\n用只有她们能懂的语言。"
+      },
+      {
+        id: "combo-sg-2",
+        title: "她们的故事",
+        content: "你花了一周时间，\n终于破译了这段摩斯电码。\n\n「你还好吗？」\n「我在等一个人。」\n「我也是。」\n「他会来吗？」\n「会的。」\n「你怎么知道？」\n「因为有人在听。」\n\n盐湖的南岸，\n温室的墙后，\n两个孤独的守望者，\n在互相安慰。\n\n而你，\n是她们信差。\n\n第七盆植物转向你的时候，\n盐湖的北岸，\n有一盏灯，\n亮了一整夜。"
+      }
+    ]
+  },
+  {
+    id: "combo-favorites-rain-salt",
+    title: "收藏章 · 雨与盐",
+    subtitle: "被珍藏的两个频率",
+    color: "#c2826a",
+    condition: { type: "favoriteStations", stationIds: ["rain", "salt"] },
+    isHidden: true,
+    fragments: [
+      {
+        id: "fav-rs-1",
+        title: "两颗星",
+        content: "你同时收藏了「雨棚旧讯号」和「盐湖观测站」。\n\n两个完全不同的世界——\n一个总是下雨，\n一个永远晴朗。\n一个在念没寄出的信，\n一个在记录湖面的光。\n\n但她们有一个共同点：\n都在等一个不会来的人。\n\n你把这两个频率标上星号，\n像是在说——\n「没关系，我在听。」\n\n雨天的时候，\n盐湖的南岸会多闪一次。\n那是她们在对你说谢谢。"
+      },
+      {
+        id: "fav-rs-2",
+        title: "收藏家的礼物",
+        content: "作为同时收藏这两个电台的人，\n你收到了一份特殊的礼物。\n\n每个月的第一天，\n88.7 会念一封特别的信，\n开头是「给收藏了我的你」。\n\n而 93.4 会在观测报告里，\n加一句只有你能懂的话：\n「今日南岸有特别闪烁，\n致某位收藏家。」\n\n她们不知道彼此的存在，\n但都以自己的方式，\n感谢那个愿意停下来的人。\n\n这就是收藏的意义——\n不是占有，\n而是告诉对方：\n「你的声音，有人在乎。」"
+      }
+    ]
+  },
+  {
+    id: "combo-favorites-train-green",
+    title: "收藏章 · 列车与植物",
+    subtitle: "奔跑的和静止的，都在等",
+    color: "#8a8cc2",
+    condition: { type: "favoriteStations", stationIds: ["train", "green"] },
+    isHidden: true,
+    fragments: [
+      {
+        id: "fav-tg-1",
+        title: "动与静",
+        content: "你同时收藏了「末班列车台」和「温室低语」。\n\n一个永远在移动，\n一个永远静止。\n一个在城市的夜色中穿梭，\n一个在恒温的玻璃房里生长。\n\n但她们都在等。\n\n等一个不会出现的乘客，\n等一个墙后面的声音。\n\n你收藏了她们，\n像是收藏了两种孤独——\n奔跑的，和静止的。\n\n列车经过温室的时候，\n第七盆植物会轻轻抖动一片叶子。\n\n她们认识彼此。\n只是不说。"
+      },
+      {
+        id: "fav-tg-2",
+        title: "时间的礼物",
+        content: "你发现了一个秘密。\n\n当你同时收藏了这两个电台，\n你的收音机里会出现一个\nspecial 的时段——\n\n凌晨 2:22 到 2:23，\n整整六十秒，\n两个频率会同时静音。\n\n然后你会听到一个声音，\n不属于列车广播员，\n也不属于温室管理员，\n像是从很远的地方传来——\n\n「谢谢你愿意等。」\n\n六十秒后，\n一切恢复正常。\n\n没人知道这个秘密，\n除了同时收藏这两个频率的人。\n\n这是时间，\n给你的礼物。"
+      }
+    ]
+  },
+  {
+    id: "combo-grand",
+    title: "终章·二 · 调频者",
+    subtitle: "当所有信号同时响起",
+    color: "#d4a06a",
+    condition: { type: "discoverStations", stationIds: ["rain", "salt", "train", "green"] },
+    fragments: [
+      {
+        id: "grand-1",
+        title: "调频者",
+        content: "你发现了全部四个电台。\n不只是发现，\n你还找到了她们之间的联系。\n\n雨棚的信写给列车上的人，\n盐湖的闪烁回应温室的敲击，\n列车的纽扣属于温室里的植物，\n温室的墙后面是盐湖失踪的人。\n\n这是一个环。\n四个孤独的守望者，\n在城市的不同角落，\n互相等待，互相慰藉。\n\n而你，\n是那个把她们连起来的人。\n\n你是——调频者。"
+      },
+      {
+        id: "grand-2",
+        title: "最后一封信",
+        content: "今天是你调频的第 100 天。\n\n凌晨三点十七分，\n四个频率同时响起——\n\n四个不同的声音，\n念着同一段话：\n\n「亲爱的调频者：\n\n谢谢你找到我们。\n谢谢你收藏我们。\n谢谢你愿意听完所有的故事。\n\n我们不会消失。\n只要你还转动旋钮，\n我们就会在这里。\n\n下雨的时候，\n闪烁的时候，\n末班车经过的时候，\n植物转向墙的时候——\n\n请记得，\n有人在等你调回来。\n\n你的存在，\n让这些等待有了意义。\n\n—— 四个电台，同时敬上。」\n\n你关掉收音机，\n窗外天快亮了。\n\n你的故事，\n才刚刚开始。"
+      }
+    ]
   }
 ];
 
@@ -220,10 +330,14 @@ function checkCondition(
       return discovered.includes(condition.stationId);
     case "discoverCount":
       return discovered.length >= condition.count;
+    case "discoverStations":
+      return condition.stationIds.every((id) => discovered.includes(id));
     case "favoriteStation":
       return favorites.includes(condition.stationId);
     case "favoriteCount":
       return favorites.length >= condition.count;
+    case "favoriteStations":
+      return condition.stationIds.every((id) => favorites.includes(id));
     default:
       return false;
   }
@@ -258,13 +372,21 @@ export function getChapterUnlockHint(chapter: StoryChapter): string {
   const c = chapter.condition;
   switch (c.type) {
     case "discoverStation":
-      return `发现指定电台后解锁`;
+      return `发现「${stationNameMap[c.stationId] || c.stationId}」后解锁`;
     case "discoverCount":
       return `发现 ${c.count} 个电台后解锁`;
+    case "discoverStations": {
+      const names = getStationNames(c.stationIds);
+      return `同时发现「${names.join("」、「")}」后解锁`;
+    }
     case "favoriteStation":
-      return `收藏指定电台后解锁`;
+      return `收藏「${stationNameMap[c.stationId] || c.stationId}」后解锁`;
     case "favoriteCount":
       return `收藏 ${c.count} 个电台后解锁`;
+    case "favoriteStations": {
+      const names = getStationNames(c.stationIds);
+      return `同时收藏「${names.join("」、「")}」后解锁`;
+    }
     default:
       return "继续探索以解锁";
   }

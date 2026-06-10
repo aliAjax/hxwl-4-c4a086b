@@ -10,6 +10,25 @@ import {
   type StoryChapter,
   type StoryFragment
 } from "./storyline";
+import {
+  dailyBroadcasts,
+  loadDailyBroadcastSave,
+  saveDailyBroadcastSave,
+  checkNewlyUnlocked as checkNewlyUnlockedBroadcasts,
+  getAvailableBroadcasts,
+  isBroadcastUnlocked,
+  getBroadcastUnlockHint,
+  getCurrentDayMessage,
+  calculateMissedBroadcasts,
+  catchUpBroadcast,
+  updateVisitTimestamp,
+  getDayNumber,
+  getAnomalyLevelLabel,
+  getAnomalyLevelColor,
+  type DailyBroadcastSave,
+  type DailyBroadcast,
+  type DailyFragment
+} from "./dailyBroadcast";
 
 type Schedule = {
   id: string;
@@ -285,6 +304,12 @@ export default function App() {
   const [activeFragmentId, setActiveFragmentId] = useState<string | null>(null);
   const [newUnlockToast, setNewUnlockToast] = useState<string | null>(null);
 
+  const [dailySave, setDailySave] = useState<DailyBroadcastSave>(loadDailyBroadcastSave);
+  const [dailyOpen, setDailyOpen] = useState(false);
+  const [activeDailyId, setActiveDailyId] = useState<string | null>(null);
+  const [activeDailyFragmentId, setActiveDailyFragmentId] = useState<string | null>(null);
+  const [newDailyToast, setNewDailyToast] = useState<string | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
@@ -390,6 +415,149 @@ export default function App() {
   useEffect(() => {
     saveStorylineSave(storylineSave);
   }, [storylineSave]);
+
+  useEffect(() => {
+    const updated = updateVisitTimestamp(dailySave, now);
+    if (updated !== dailySave) {
+      setDailySave(updated);
+    }
+  }, [now, dailySave]);
+
+  useEffect(() => {
+    const newly = checkNewlyUnlockedBroadcasts(
+      dailyBroadcasts,
+      dailySave,
+      now,
+      save.discovered,
+      save.favorites.length
+    );
+    if (newly.length > 0) {
+      const timestamp = Date.now();
+      setDailySave((current) => {
+        const next = { ...current };
+        next.discoveredBroadcasts = [...next.discoveredBroadcasts, ...newly];
+        next.discoveredAt = { ...next.discoveredAt };
+        for (const id of newly) {
+          next.discoveredAt[id] = timestamp;
+        }
+        return next;
+      });
+      const firstNew = newly[0];
+      const broadcast = dailyBroadcasts.find((b) => b.id === firstNew);
+      if (broadcast) {
+        setNewDailyToast(broadcast.title);
+        setTimeout(() => setNewDailyToast(null), 4000);
+      }
+    }
+  }, [now, save.discovered, save.favorites.length, dailySave]);
+
+  useEffect(() => {
+    saveDailyBroadcastSave(dailySave);
+  }, [dailySave]);
+
+  const missedBroadcasts = useMemo(
+    () => calculateMissedBroadcasts(dailySave, now, save.discovered, save.favorites.length),
+    [dailySave, now, save.discovered, save.favorites.length]
+  );
+
+  const availableDailyBroadcasts = useMemo(
+    () => getAvailableBroadcasts(now, save.discovered, save.favorites.length, dailySave.firstVisitDate),
+    [now, save.discovered, save.favorites.length, dailySave.firstVisitDate]
+  );
+
+  const discoveredDailyBroadcasts = useMemo(
+    () =>
+      dailyBroadcasts.filter((b) => dailySave.discoveredBroadcasts.includes(b.id)),
+    [dailySave.discoveredBroadcasts]
+  );
+
+  const dailyUnreadCount = useMemo(() => {
+    let count = 0;
+    for (const broadcast of discoveredDailyBroadcasts) {
+      for (const fragment of broadcast.fragments) {
+        if (!dailySave.readFragments.includes(fragment.id)) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }, [discoveredDailyBroadcasts, dailySave.readFragments]);
+
+  function openDailyBroadcast() {
+    setDailyOpen(true);
+    setActiveDailyId(null);
+    setActiveDailyFragmentId(null);
+  }
+
+  function closeDailyBroadcast() {
+    setDailyOpen(false);
+  }
+
+  function openDailyDetail(broadcastId: string) {
+    setActiveDailyId(broadcastId);
+    setActiveDailyFragmentId(null);
+  }
+
+  function backToDailyList() {
+    setActiveDailyId(null);
+    setActiveDailyFragmentId(null);
+  }
+
+  function openDailyFragment(fragmentId: string) {
+    setActiveDailyFragmentId(fragmentId);
+    setDailySave((current) => {
+      if (current.readFragments.includes(fragmentId)) {
+        return {
+          ...current,
+          lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+        };
+      }
+      return {
+        ...current,
+        readFragments: [...current.readFragments, fragmentId],
+        lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+      };
+    });
+  }
+
+  function prevDailyFragment() {
+    if (!activeDailyId || !activeDailyFragmentId) return;
+    const broadcast = dailyBroadcasts.find((b) => b.id === activeDailyId);
+    if (!broadcast) return;
+    const idx = broadcast.fragments.findIndex((f) => f.id === activeDailyFragmentId);
+    if (idx > 0) {
+      openDailyFragment(broadcast.fragments[idx - 1].id);
+    }
+  }
+
+  function nextDailyFragment() {
+    if (!activeDailyId || !activeDailyFragmentId) return;
+    const broadcast = dailyBroadcasts.find((b) => b.id === activeDailyId);
+    if (!broadcast) return;
+    const idx = broadcast.fragments.findIndex((f) => f.id === activeDailyFragmentId);
+    if (idx < broadcast.fragments.length - 1) {
+      openDailyFragment(broadcast.fragments[idx + 1].id);
+    }
+  }
+
+  function handleCatchUp(broadcastId: string) {
+    setDailySave((current) => catchUpBroadcast(current, broadcastId));
+    const broadcast = dailyBroadcasts.find((b) => b.id === broadcastId);
+    if (broadcast) {
+      setNewDailyToast(`补收听：${broadcast.title}`);
+      setTimeout(() => setNewDailyToast(null), 4000);
+    }
+  }
+
+  const activeDailyBroadcast = useMemo(
+    () => dailyBroadcasts.find((b) => b.id === activeDailyId) || null,
+    [activeDailyId]
+  );
+
+  const activeDailyFragment = useMemo(() => {
+    if (!activeDailyBroadcast || !activeDailyFragmentId) return null;
+    return activeDailyBroadcast.fragments.find((f) => f.id === activeDailyFragmentId) || null;
+  }, [activeDailyBroadcast, activeDailyFragmentId]);
 
   function openStoryline() {
     setStorylineOpen(true);
@@ -614,6 +782,12 @@ export default function App() {
         <div className="hero-header">
           <h1>旋进没人值守的电台</h1>
           <div className="hero-actions">
+            <button className="daily-trigger" onClick={openDailyBroadcast}>
+              <span className="daily-trigger-icon">📡</span>
+              <span>每日异常广播</span>
+              {dailyUnreadCount > 0 && <span className="daily-count">{dailyUnreadCount}</span>}
+              {missedBroadcasts.length > 0 && <span className="daily-missed-badge">{missedBroadcasts.length} 期补听</span>}
+            </button>
             <button className="storyline-trigger" onClick={openStoryline}>
               <span className="storyline-trigger-icon">📖</span>
               <span>故事线</span>
@@ -1284,6 +1458,268 @@ export default function App() {
                   disabled={
                     activeChapter.fragments.findIndex((f) => f.id === activeFragment.id) ===
                     activeChapter.fragments.length - 1
+                  }
+                >
+                  下一篇 →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className={`daily-toast ${newDailyToast ? "show" : ""}`}>
+        <span className="daily-toast-icon">📡</span>
+        <div className="daily-toast-content">
+          <strong>新的异常广播</strong>
+          <p>{newDailyToast}</p>
+        </div>
+      </div>
+
+      <div className={`drawer-overlay ${dailyOpen ? "open" : ""}`} onClick={closeDailyBroadcast} />
+      <aside className={`daily-drawer ${dailyOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>{activeDailyBroadcast ? activeDailyBroadcast.title : "每日异常广播"}</h2>
+            <p className="drawer-subtitle">
+              {activeDailyBroadcast
+                ? activeDailyBroadcast.subtitle
+                : `已发现 ${discoveredDailyBroadcasts.length} / ${dailyBroadcasts.length} 期`}
+            </p>
+            {missedBroadcasts.length > 0 && !activeDailyBroadcast && (
+              <p className="daily-missed-hint">
+                你有 {missedBroadcasts.length} 期广播可以补收听
+              </p>
+            )}
+          </div>
+          <button className="drawer-close" onClick={closeDailyBroadcast}>
+            ✕
+          </button>
+        </header>
+
+        <div className="drawer-content">
+          {!activeDailyBroadcast && (
+            <div className="daily-broadcast-list">
+              {dailyBroadcasts.map((broadcast) => {
+                const isDiscovered = dailySave.discoveredBroadcasts.includes(broadcast.id);
+                const isMissed = missedBroadcasts.includes(broadcast.id);
+                const totalFragments = broadcast.fragments.length;
+                const readFragments = broadcast.fragments.filter((f) =>
+                  dailySave.readFragments.includes(f.id)
+                ).length;
+                const dayNum = getDayNumber(broadcast, dailySave.firstVisitDate);
+                const anomalyColor = getAnomalyLevelColor(broadcast.anomalyLevel);
+                const anomalyLabel = getAnomalyLevelLabel(broadcast.anomalyLevel);
+
+                return (
+                  <article
+                    key={broadcast.id}
+                    className={`daily-broadcast-card ${isDiscovered ? "discovered" : "locked"} ${isMissed ? "missed" : ""}`}
+                    onClick={() => isDiscovered && openDailyDetail(broadcast.id)}
+                  >
+                    <div
+                      className="daily-broadcast-icon"
+                      style={{ background: isDiscovered ? broadcast.color : "#2d3434" }}
+                    >
+                      {isDiscovered ? "📡" : "🔒"}
+                    </div>
+                    <div className="daily-broadcast-info">
+                      <div className="daily-broadcast-header">
+                        <strong style={{ color: isDiscovered ? broadcast.color : "#5a6b6d" }}>
+                          {broadcast.title}
+                        </strong>
+                        <span
+                          className="daily-anomaly-badge"
+                          style={{ background: `${anomalyColor}20`, color: anomalyColor }}
+                        >
+                          {anomalyLabel}
+                        </span>
+                      </div>
+                      <p className="daily-broadcast-subtitle">{broadcast.subtitle}</p>
+                      {isDiscovered ? (
+                        <div className="daily-progress">
+                          <div className="daily-progress-bar">
+                            <i
+                              style={{
+                                width: `${(readFragments / totalFragments) * 100}%`,
+                                background: broadcast.color
+                              }}
+                            />
+                          </div>
+                          <span className="daily-progress-text">
+                            {readFragments}/{totalFragments} 片段
+                          </span>
+                        </div>
+                      ) : isMissed ? (
+                        <div className="daily-catchup-section">
+                          <p className="daily-unlock-hint">{getBroadcastUnlockHint(broadcast)}</p>
+                          <button
+                            className="daily-catchup-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCatchUp(broadcast.id);
+                            }}
+                          >
+                            立即补收听
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="daily-unlock-hint">{getBroadcastUnlockHint(broadcast)}</p>
+                      )}
+                    </div>
+                    {isDiscovered && <span className="daily-broadcast-arrow">▶</span>}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {activeDailyBroadcast && !activeDailyFragment && (
+            <div className="daily-fragment-list">
+              <button className="daily-back-btn" onClick={backToDailyList}>
+                ← 返回广播列表
+              </button>
+              <div
+                className="daily-broadcast-header-card"
+                style={{ borderTopColor: activeDailyBroadcast.color }}
+              >
+                <h3
+                  className="daily-broadcast-title"
+                  style={{ color: activeDailyBroadcast.color }}
+                >
+                  {activeDailyBroadcast.title}
+                </h3>
+                <p className="daily-broadcast-desc">{activeDailyBroadcast.subtitle}</p>
+                <div className="daily-station-tags">
+                  {activeDailyBroadcast.stationIds.map((sid) => (
+                    <span key={sid} className="daily-station-tag">
+                      📻 {stations.find((s) => s.id === sid)?.name || sid}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="daily-fragments">
+                {activeDailyBroadcast.fragments.map((fragment, index) => {
+                  const isRead = dailySave.readFragments.includes(fragment.id);
+                  return (
+                    <button
+                      key={fragment.id}
+                      className={`daily-fragment-card ${isRead ? "read" : ""}`}
+                      onClick={() => openDailyFragment(fragment.id)}
+                      style={{
+                        borderColor: isRead ? `${activeDailyBroadcast.color}40` : "transparent"
+                      }}
+                    >
+                      <span
+                        className="daily-fragment-num"
+                        style={{ background: isRead ? activeDailyBroadcast.color : "#2d3434" }}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="daily-fragment-info">
+                        <strong>{fragment.title}</strong>
+                        <p className="daily-fragment-status">
+                          {isRead ? "✓ 已阅读" : "未阅读"}
+                        </p>
+                      </div>
+                      <span className="daily-fragment-arrow">▶</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeDailyBroadcast.messages.length > 0 && (
+                <div className="daily-messages-section">
+                  <h4 className="daily-messages-title">📻 相关电台广播</h4>
+                  <div className="daily-messages-list">
+                    {activeDailyBroadcast.messages.map((msg) => {
+                      const station = stations.find((s) => s.id === msg.stationId);
+                      return (
+                        <div
+                          key={msg.id}
+                          className="daily-message-item"
+                          style={{ borderLeftColor: station?.color || "#888" }}
+                        >
+                          <div className="daily-message-header">
+                            <span
+                              className="daily-message-station"
+                              style={{ color: station?.color || "#888" }}
+                            >
+                              {station?.name || msg.stationId}
+                            </span>
+                            {msg.timeSlot && (
+                              <span className="daily-message-time">{msg.timeSlot}</span>
+                            )}
+                          </div>
+                          <p className="daily-message-content">
+                            {msg.content.split("\n").map((line, i) => (
+                              <span key={i}>
+                                {line || "\u00A0"}
+                                <br />
+                              </span>
+                            ))}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeDailyBroadcast && activeDailyFragment && (
+            <div className="daily-reader">
+              <div className="daily-reader-header">
+                <button
+                  className="daily-back-btn"
+                  onClick={() => setActiveDailyFragmentId(null)}
+                >
+                  ← 返回片段列表
+                </button>
+              </div>
+              <article
+                className="daily-reader-content"
+                style={{ borderTopColor: activeDailyBroadcast.color }}
+              >
+                <h3
+                  className="daily-reader-title"
+                  style={{ color: activeDailyBroadcast.color }}
+                >
+                  {activeDailyFragment.title}
+                </h3>
+                <div className="daily-reader-body">
+                  {activeDailyFragment.content.split("\n").map((line, i) => (
+                    <p key={i}>{line || "\u00A0"}</p>
+                  ))}
+                </div>
+              </article>
+              <div className="daily-reader-nav">
+                <button
+                  className="daily-nav-btn prev"
+                  onClick={prevDailyFragment}
+                  disabled={
+                    activeDailyBroadcast.fragments.findIndex(
+                      (f) => f.id === activeDailyFragment.id
+                    ) === 0
+                  }
+                >
+                  ← 上一篇
+                </button>
+                <span className="daily-nav-indicator">
+                  {activeDailyBroadcast.fragments.findIndex(
+                    (f) => f.id === activeDailyFragment.id
+                  ) + 1}{" "}
+                  / {activeDailyBroadcast.fragments.length}
+                </span>
+                <button
+                  className="daily-nav-btn next"
+                  onClick={nextDailyFragment}
+                  disabled={
+                    activeDailyBroadcast.fragments.findIndex(
+                      (f) => f.id === activeDailyFragment.id
+                    ) ===
+                    activeDailyBroadcast.fragments.length - 1
                   }
                 >
                   下一篇 →

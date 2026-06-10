@@ -13,9 +13,11 @@ type RadioSave = {
   favorites: string[];
   discoveredAt: Record<string, number>;
   lastListenedAt: Record<string, number>;
+  notes: Record<string, string>;
 };
 
 const storageKey = "hxwl-4-radio";
+const NOTE_MAX_LENGTH = 200;
 
 const stations: Station[] = [
   { id: "rain", name: "雨棚旧讯号", frequency: 88.7, color: "#61a5c2", message: "今晚的雨会绕过屋顶，落在所有没寄出的信上。" },
@@ -31,10 +33,11 @@ function loadSave(): RadioSave {
       discovered: data.discovered || [],
       favorites: data.favorites || [],
       discoveredAt: data.discoveredAt || {},
-      lastListenedAt: data.lastListenedAt || {}
+      lastListenedAt: data.lastListenedAt || {},
+      notes: data.notes || {}
     };
   } catch {
-    return { discovered: [], favorites: [], discoveredAt: {}, lastListenedAt: {} };
+    return { discovered: [], favorites: [], discoveredAt: {}, lastListenedAt: {}, notes: {} };
   }
 }
 
@@ -104,6 +107,8 @@ export default function App() {
   const [save, setSave] = useState<RadioSave>(loadSave);
   const [expandedArchive, setExpandedArchive] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
 
   const tuned = useMemo(
     () => stations.map((station) => ({ station, signal: signalFor(frequency, station) })).sort((a, b) => b.signal - a.signal)[0],
@@ -161,6 +166,31 @@ export default function App() {
     setDrawerOpen(false);
   }
 
+  function startEditingNote(id: string) {
+    setEditingNoteId(id);
+    setNoteDraft(save.notes[id] || "");
+  }
+
+  function saveNote(id: string) {
+    const trimmed = noteDraft.trim();
+    setSave((current) => {
+      const next = { ...current, notes: { ...current.notes } };
+      if (trimmed) {
+        next.notes[id] = trimmed;
+      } else {
+        delete next.notes[id];
+      }
+      return next;
+    });
+    setEditingNoteId(null);
+    setNoteDraft("");
+  }
+
+  function cancelEditingNote() {
+    setEditingNoteId(null);
+    setNoteDraft("");
+  }
+
   return (
     <main className="radio">
       <section className="hero">
@@ -193,14 +223,48 @@ export default function App() {
           <div className="stations">
             {stations.map((station) => {
               const found = save.discovered.includes(station.id);
+              const note = save.notes[station.id];
+              const isEditing = editingNoteId === station.id;
               return (
                 <article key={station.id} className={found ? "found" : ""}>
                   <span style={{ background: station.color }}>{found ? station.frequency.toFixed(1) : "??"}</span>
                   <div>
                     <strong>{found ? station.name : "未识别频段"}</strong>
                     <p>{found ? station.message : "继续调频寻找它。"}</p>
+                    {found && note && !isEditing && (
+                      <p className="note-preview">📝 {note.length > 30 ? note.slice(0, 30) + "…" : note}</p>
+                    )}
+                    {found && isEditing && (
+                      <div className="note-editor" onClick={(e) => e.stopPropagation()}>
+                        <textarea
+                          className="note-textarea"
+                          value={noteDraft}
+                          onChange={(e) => setNoteDraft(e.target.value.slice(0, NOTE_MAX_LENGTH))}
+                          placeholder="写一段私人备注…"
+                          rows={3}
+                          autoFocus
+                        />
+                        <div className="note-editor-footer">
+                          <span className="note-counter">{noteDraft.length}/{NOTE_MAX_LENGTH}</span>
+                          <div className="note-editor-actions">
+                            <button className="note-cancel-btn" onClick={cancelEditingNote}>取消</button>
+                            <button className="note-save-btn" onClick={() => saveNote(station.id)}>保存</button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {found && (
+                  {found && !isEditing && (
+                    <div className="station-actions">
+                      <button className="note-trigger-btn" onClick={() => startEditingNote(station.id)}>
+                        {note ? "📝" : "备忘"}
+                      </button>
+                      <button onClick={() => toggleFavorite(station.id)}>
+                        {save.favorites.includes(station.id) ? "已收藏" : "收藏"}
+                      </button>
+                    </div>
+                  )}
+                  {found && isEditing && (
                     <button onClick={() => toggleFavorite(station.id)}>
                       {save.favorites.includes(station.id) ? "已收藏" : "收藏"}
                     </button>
@@ -276,6 +340,47 @@ export default function App() {
                         >
                           {isFavorite ? "取消收藏" : "收藏"}
                         </button>
+                      </div>
+                      <div className="detail-row">
+                        <label>调频笔记</label>
+                        <div className="note-detail-content">
+                          {editingNoteId === station.id ? (
+                            <div className="note-editor" onClick={(e) => e.stopPropagation()}>
+                              <textarea
+                                className="note-textarea"
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value.slice(0, NOTE_MAX_LENGTH))}
+                                placeholder="写一段私人备注…"
+                                rows={3}
+                                autoFocus
+                              />
+                              <div className="note-editor-footer">
+                                <span className="note-counter">{noteDraft.length}/{NOTE_MAX_LENGTH}</span>
+                                <div className="note-editor-actions">
+                                  <button className="note-cancel-btn" onClick={cancelEditingNote}>取消</button>
+                                  <button className="note-save-btn" onClick={() => saveNote(station.id)}>保存</button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {save.notes[station.id] ? (
+                                <span className="note-detail-text">{save.notes[station.id]}</span>
+                              ) : (
+                                <span className="note-empty-hint">暂无备注</span>
+                              )}
+                              <button
+                                className="note-detail-edit-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditingNote(station.id);
+                                }}
+                              >
+                                {save.notes[station.id] ? "编辑" : "添加备注"}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}

@@ -4,7 +4,7 @@ import {
   loadStorylineSave,
   saveStorylineSave,
   migrateStorylineIfNeeded,
-  checkNewlyUnlocked,
+  checkNewlyUnlocked as checkStoryNewlyUnlocked,
   getChapterUnlockHint,
   type StorylineSave,
   type StoryChapter,
@@ -41,6 +41,19 @@ import {
   type SignalTape,
   type SignalTapeSave
 } from "./signalTape";
+import {
+  achievements,
+  loadAchievementSave,
+  saveAchievementSave,
+  checkNewlyUnlocked,
+  unlockAchievements,
+  getAchievementUnlockHint,
+  getAchievementProgress,
+  formatUnlockedTime,
+  type Achievement,
+  type AchievementSave,
+  type AchievementContext as AchCtx
+} from "./achievements";
 
 type Schedule = {
   id: string;
@@ -327,6 +340,10 @@ export default function App() {
   const [activeTapeId, setActiveTapeId] = useState<string | null>(null);
   const [tapeSavedToast, setTapeSavedToast] = useState(false);
 
+  const [achievementSave, setAchievementSave] = useState<AchievementSave>(loadAchievementSave);
+  const [achievementOpen, setAchievementOpen] = useState(false);
+  const [newAchievementToast, setNewAchievementToast] = useState<Achievement | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
@@ -435,7 +452,7 @@ export default function App() {
   }, [save.discovered, save.favorites, storylineSave]);
 
   useEffect(() => {
-    const newly = checkNewlyUnlocked(storyChapters, storylineSave, save.discovered, save.favorites);
+    const newly = checkStoryNewlyUnlocked(storyChapters, storylineSave, save.discovered, save.favorites);
     if (newly.length > 0) {
       const now = Date.now();
       setStorylineSave((current) => {
@@ -564,6 +581,52 @@ export default function App() {
     }
     return count;
   }, [discoveredDailyBroadcasts, dailySave.readFragments]);
+
+  const allStoryFragmentIds = useMemo(
+    () => storyChapters.flatMap((ch) => ch.fragments.map((f) => f.id)),
+    []
+  );
+
+  const anomalyTapesCount = useMemo(
+    () => signalTapeSave.tapes.filter((t) => t.isAnomaly).length,
+    [signalTapeSave.tapes]
+  );
+
+  const achievementContext = useMemo<AchCtx>(() => ({
+    discoveredStations: save.discovered,
+    favoriteStations: save.favorites,
+    readStoryFragments: storylineSave.readFragments,
+    allStoryFragmentIds,
+    catchUpCompleted: dailySave.catchUpCompleted,
+    availableMissedCount: missedBroadcasts.length,
+    customStationsCount: customStations.length,
+    tapesCount: signalTapeSave.tapes.length,
+    anomalyTapesCount
+  }), [
+    save.discovered,
+    save.favorites,
+    storylineSave.readFragments,
+    allStoryFragmentIds,
+    dailySave.catchUpCompleted,
+    missedBroadcasts.length,
+    customStations.length,
+    signalTapeSave.tapes.length,
+    anomalyTapesCount
+  ]);
+
+  useEffect(() => {
+    const newly = checkNewlyUnlocked(achievementSave, achievementContext);
+    if (newly.length > 0) {
+      setAchievementSave((current) => unlockAchievements(current, newly));
+      const firstNew = newly[0];
+      setNewAchievementToast(firstNew);
+      setTimeout(() => setNewAchievementToast(null), 4000);
+    }
+  }, [achievementContext, achievementSave]);
+
+  useEffect(() => {
+    saveAchievementSave(achievementSave);
+  }, [achievementSave]);
 
   function openDailyBroadcast() {
     setDailyOpen(true);
@@ -889,6 +952,13 @@ export default function App() {
               <span className="favorites-trigger-icon">★</span>
               <span>收藏电台</span>
               {favoriteStations.length > 0 && <span className="favorites-count">{favoriteStations.length}</span>}
+            </button>
+            <button className="achievement-trigger" onClick={() => setAchievementOpen(true)}>
+              <span className="achievement-trigger-icon">🏆</span>
+              <span>调频成就</span>
+              <span className="achievement-count">
+                {achievementSave.unlocked.length}/{achievements.filter((a) => !a.isHidden).length}
+              </span>
             </button>
           </div>
         </div>
@@ -2007,6 +2077,101 @@ export default function App() {
               </div>
             </div>
           )}
+        </div>
+      </aside>
+
+      <div className={`achievement-toast ${newAchievementToast ? "show" : ""}`}>
+        <span className="achievement-toast-icon">{newAchievementToast?.icon || "🏆"}</span>
+        <div className="achievement-toast-content">
+          <strong>成就解锁！</strong>
+          <p>{newAchievementToast?.title}</p>
+        </div>
+      </div>
+
+      <div className={`drawer-overlay ${achievementOpen ? "open" : ""}`} onClick={() => setAchievementOpen(false)} />
+      <aside className={`achievement-drawer ${achievementOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>调频成就</h2>
+            <p className="drawer-subtitle">
+              已解锁 {achievementSave.unlocked.length} / {achievements.filter((a) => !a.isHidden).length} 项成就
+            </p>
+          </div>
+          <button className="drawer-close" onClick={() => setAchievementOpen(false)}>
+            ✕
+          </button>
+        </header>
+
+        <div className="drawer-content">
+          <div className="achievement-summary">
+            <div className="achievement-summary-bar">
+              <i
+                style={{
+                  width: `${
+                    (achievementSave.unlocked.length /
+                      Math.max(achievements.filter((a) => !a.isHidden).length, 1)) *
+                    100
+                  }%`
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="achievement-list">
+            {achievements.map((achievement) => {
+              const isUnlocked = achievementSave.unlocked.includes(achievement.id);
+              const isHidden = achievement.isHidden && !isUnlocked;
+
+              if (isHidden) return null;
+
+              const progress = getAchievementProgress(achievement, achievementContext);
+              const unlockedAt = achievementSave.unlockedAt[achievement.id];
+
+              return (
+                <article
+                  key={achievement.id}
+                  className={`achievement-card ${isUnlocked ? "unlocked" : "locked"}`}
+                >
+                  <div
+                    className="achievement-icon"
+                    style={{ background: isUnlocked ? achievement.color : "#2d3434" }}
+                  >
+                    {isUnlocked ? achievement.icon : "🔒"}
+                  </div>
+                  <div className="achievement-info">
+                    <strong style={{ color: isUnlocked ? achievement.color : "#5a6b6d" }}>
+                      {achievement.title}
+                    </strong>
+                    <p className="achievement-subtitle">{achievement.subtitle}</p>
+                    {isUnlocked ? (
+                      <p className="achievement-time">
+                        📅 {formatUnlockedTime(unlockedAt)}
+                      </p>
+                    ) : progress ? (
+                      <div className="achievement-progress">
+                        <div className="achievement-progress-bar">
+                          <i
+                            style={{
+                              width: `${(progress.current / progress.total) * 100}%`,
+                              background: achievement.color
+                            }}
+                          />
+                        </div>
+                        <span className="achievement-progress-text">
+                          {progress.current}/{progress.total}
+                        </span>
+                      </div>
+                    ) : null}
+                    {!isUnlocked && (
+                      <p className="achievement-hint">
+                        {getAchievementUnlockHint(achievement, achievementContext)}
+                      </p>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       </aside>
     </main>

@@ -928,6 +928,397 @@ input[type="range"] {
   color: #c9d0d1;
 }
 
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lab-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: 1px solid rgba(97, 165, 194, 0.4);
+  border-radius: 999px;
+  background: rgba(97, 165, 194, 0.1);
+  color: #8cc9df;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.lab-trigger:hover {
+  background: rgba(97, 165, 194, 0.2);
+  border-color: rgba(97, 165, 194, 0.6);
+}
+
+.lab-trigger-icon {
+  font-size: 1.1rem;
+}
+
+.lab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #8cc9df;
+  color: #101718;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.custom-tag {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 700;
+  border-radius: 999px;
+  background: rgba(97, 165, 194, 0.25);
+  color: #8cc9df;
+}
+
+.custom-tag-inline {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+  border-radius: 999px;
+  background: rgba(97, 165, 194, 0.2);
+  color: #8cc9df;
+  vertical-align: middle;
+}
+
+.lab-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(460px, 100vw);
+  height: 100vh;
+  background: #101718;
+  border-left: 1px solid rgba(97, 165, 194, 0.2);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
+  transform: translateX(100%);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.lab-drawer.open {
+  transform: translateX(0);
+}
+
+.lab-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.lab-form-section {
+  padding: 20px;
+  border-radius: 10px;
+  background: rgba(27, 35, 36, 0.8);
+  border: 1px solid rgba(97, 165, 194, 0.12);
+}
+
+.lab-form-title {
+  margin: 0 0 16px;
+  font-size: 1.05rem;
+  color: #8cc9df;
+}
+
+.lab-field {
+  margin-bottom: 16px;
+}
+
+.lab-field:last-of-type {
+  margin-bottom: 20px;
+}
+
+.lab-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #aebabb;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.lab-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 195, 106, 0.25);
+  background: rgba(18, 26, 28, 0.9);
+  color: #d5ded8;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+
+.lab-input:focus {
+  border-color: rgba(97, 165, 194, 0.5);
+}
+
+.lab-input::placeholder {
+  color: #5a6b6d;
+}
+
+.lab-freq-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lab-freq-input {
+  width: 140px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-freq-slider {
+  width: 100%;
+  accent-color: #8cc9df;
+}
+
+.lab-freq-warning {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(212, 106, 106, 0.12);
+  border: 1px solid rgba(212, 106, 106, 0.3);
+  color: #ff8080;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.lab-freq-ok {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(90, 168, 106, 0.1);
+  border: 1px solid rgba(90, 168, 106, 0.25);
+  color: #7fd08f;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.lab-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.lab-color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.lab-color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.lab-color-swatch.active {
+  border-color: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+}
+
+.lab-color-custom {
+  position: relative;
+  cursor: pointer;
+}
+
+.lab-color-custom input[type="color"] {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lab-color-custom-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px dashed;
+  color: #aebabb;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: all 150ms ease;
+}
+
+.lab-color-custom-label:hover {
+  color: #d5ded8;
+}
+
+.lab-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 195, 106, 0.25);
+  background: rgba(18, 26, 28, 0.9);
+  color: #d5ded8;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+
+.lab-textarea:focus {
+  border-color: rgba(97, 165, 194, 0.5);
+}
+
+.lab-textarea::placeholder {
+  color: #5a6b6d;
+}
+
+.lab-char-count {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: #5a6b6d;
+  text-align: right;
+}
+
+.lab-add-btn {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #8cc9df;
+  color: #101718;
+  font-weight: 900;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.lab-add-btn:hover:not(:disabled) {
+  background: #a8daf0;
+}
+
+.lab-add-btn:disabled {
+  background: rgba(97, 165, 194, 0.25);
+  color: #5a6b6d;
+  cursor: not-allowed;
+}
+
+.lab-existing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lab-existing-item {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(18, 26, 28, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lab-existing-freq {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #101718;
+  font-weight: 900;
+  font-size: 0.9rem;
+}
+
+.lab-existing-info strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.95rem;
+}
+
+.lab-existing-info p {
+  margin: 0;
+  color: #aebabb;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.lab-existing-badges {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lab-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.lab-badge-found {
+  background: rgba(90, 168, 106, 0.2);
+  color: #7fd08f;
+}
+
+.lab-badge-unfound {
+  background: rgba(174, 186, 187, 0.15);
+  color: #889697;
+}
+
+.lab-badge-fav {
+  background: rgba(232, 195, 106, 0.2);
+  color: #e8c36a;
+}
+
+.lab-delete-btn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(212, 106, 106, 0.12);
+  color: #ff8080;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.lab-delete-btn:hover {
+  background: rgba(212, 106, 106, 0.3);
+}
+
+.detail-delete-btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: rgba(212, 106, 106, 0.15);
+  color: #ff8080;
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.detail-delete-btn:hover {
+  background: rgba(212, 106, 106, 0.3);
+}
+
 @media (max-width: 900px) {
   .console {
     grid-template-columns: 1fr;
@@ -943,6 +1334,11 @@ input[type="range"] {
     gap: 12px;
   }
 
+  .hero-actions {
+    gap: 8px;
+  }
+
+  .lab-trigger,
   .favorites-trigger {
     padding: 10px 16px;
     font-size: 0.9rem;
@@ -993,5 +1389,14 @@ input[type="range"] {
   .favorite-freq {
     width: 48px;
     height: 48px;
+  }
+
+  .lab-existing-item {
+    grid-template-columns: 42px 1fr auto;
+  }
+
+  .lab-existing-freq {
+    width: 42px;
+    height: 42px;
   }
 }

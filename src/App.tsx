@@ -15,6 +15,15 @@ type Station = {
   color: string;
   message: string;
   schedules: Schedule[];
+  isCustom?: boolean;
+};
+
+type CustomStation = {
+  id: string;
+  name: string;
+  frequency: number;
+  color: string;
+  message: string;
 };
 
 type RadioSave = {
@@ -26,7 +35,9 @@ type RadioSave = {
 };
 
 const storageKey = "hxwl-4-radio";
+const customStationsKey = "hxwl-4-custom-stations";
 const NOTE_MAX_LENGTH = 200;
+const MIN_FREQ_GAP = 0.5;
 
 const stations: Station[] = [
   {
@@ -130,8 +141,35 @@ function loadSave(): RadioSave {
   }
 }
 
+function loadCustomStations(): CustomStation[] {
+  try {
+    const data = JSON.parse(localStorage.getItem(customStationsKey) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 function signalFor(frequency: number, station: Station) {
   return Math.max(0, 100 - Math.abs(frequency - station.frequency) * 80);
+}
+
+function checkFrequencyConflict(
+  freq: number,
+  allStations: Station[],
+  excludeId?: string
+): { conflict: boolean; nearestStation: Station | null; gap: number } {
+  let nearest: Station | null = null;
+  let minGap = Infinity;
+  for (const s of allStations) {
+    if (s.id === excludeId) continue;
+    const gap = Math.abs(freq - s.frequency);
+    if (gap < minGap) {
+      minGap = gap;
+      nearest = s;
+    }
+  }
+  return { conflict: minGap < MIN_FREQ_GAP, nearestStation: nearest, gap: minGap };
 }
 
 function isValidTimestamp(timestamp: number | undefined): timestamp is number {
@@ -198,11 +236,26 @@ const SCAN_LOCK_THRESHOLD = 74;
 const SCAN_PAUSE_DURATION = 1200;
 const SCAN_LOCK_DURATION = 2500;
 
+const PRESET_COLORS = [
+  "#e8c36a",
+  "#61a5c2",
+  "#a06cd5",
+  "#5aa86a",
+  "#d46a6a",
+  "#6ac2a0",
+  "#c2826a",
+  "#8a8cc2",
+  "#c2a06a",
+  "#6ab8c2"
+];
+
 export default function App() {
   const [frequency, setFrequency] = useState(90.1);
   const [save, setSave] = useState<RadioSave>(loadSave);
+  const [customStations, setCustomStations] = useState<CustomStation[]>(loadCustomStations);
   const [expandedArchive, setExpandedArchive] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [labOpen, setLabOpen] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [isScanning, setIsScanning] = useState(false);
@@ -210,14 +263,30 @@ export default function App() {
   const [scanPaused, setScanPaused] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
+  const [labName, setLabName] = useState("");
+  const [labFreq, setLabFreq] = useState(90.0);
+  const [labColor, setLabColor] = useState("#e8c36a");
+  const [labMessage, setLabMessage] = useState("");
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
 
+  const allStations = useMemo<Station[]>(() => {
+    return [
+      ...stations,
+      ...customStations.map((cs) => ({
+        ...cs,
+        schedules: [] as Schedule[],
+        isCustom: true as const,
+      })),
+    ];
+  }, [customStations]);
+
   const tuned = useMemo(
-    () => stations.map((station) => ({ station, signal: signalFor(frequency, station) })).sort((a, b) => b.signal - a.signal)[0],
-    [frequency]
+    () => allStations.map((station) => ({ station, signal: signalFor(frequency, station) })).sort((a, b) => b.signal - a.signal)[0],
+    [frequency, allStations]
   );
   const currentStation = tuned.signal >= 74 ? tuned.station : null;
   const noise = Math.round(100 - tuned.signal);
@@ -229,20 +298,24 @@ export default function App() {
 
   const favoriteStations = useMemo(
     () =>
-      stations
+      allStations
         .filter((station) => save.favorites.includes(station.id))
         .sort((a, b) => {
           const aTime = save.lastListenedAt[a.id] ?? 0;
           const bTime = save.lastListenedAt[b.id] ?? 0;
           return bTime - aTime;
         }),
-    [save.favorites, save.lastListenedAt]
+    [save.favorites, save.lastListenedAt, allStations]
   );
 
   const lastListenedStation = useMemo(() => {
     if (favoriteStations.length === 0) return null;
     return favoriteStations[0];
   }, [favoriteStations]);
+
+  const labFreqConflict = useMemo(() => {
+    return checkFrequencyConflict(labFreq, allStations);
+  }, [labFreq, allStations]);
 
   useEffect(() => {
     if (currentStation && !save.discovered.includes(currentStation.id)) {
@@ -263,6 +336,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(save));
   }, [save]);
+
+  useEffect(() => {
+    localStorage.setItem(customStationsKey, JSON.stringify(customStations));
+  }, [customStations]);
 
   useEffect(() => {
     if (!isScanning || scanPaused) return;
@@ -355,17 +432,65 @@ export default function App() {
     setNoteDraft("");
   }
 
+  function addCustomStation() {
+    if (!labName.trim() || !labMessage.trim()) return;
+    if (labFreqConflict.conflict) return;
+    if (labFreq < 87.5 || labFreq > 108.0) return;
+    const newStation: CustomStation = {
+      id: `custom-${Date.now()}`,
+      name: labName.trim(),
+      frequency: Number(labFreq.toFixed(1)),
+      color: labColor,
+      message: labMessage.trim(),
+    };
+    setCustomStations((prev) => [...prev, newStation]);
+    setLabName("");
+    setLabFreq(90.0);
+    setLabColor("#e8c36a");
+    setLabMessage("");
+  }
+
+  function deleteCustomStation(id: string) {
+    setCustomStations((prev) => prev.filter((cs) => cs.id !== id));
+    setSave((current) => {
+      const next = { ...current };
+      next.discovered = next.discovered.filter((d) => d !== id);
+      next.favorites = next.favorites.filter((f) => f !== id);
+      delete next.discoveredAt[id];
+      delete next.lastListenedAt[id];
+      delete next.notes[id];
+      return next;
+    });
+  }
+
+  function closeLab() {
+    setLabOpen(false);
+    setLabName("");
+    setLabFreq(90.0);
+    setLabColor("#e8c36a");
+    setLabMessage("");
+  }
+
+  const canAddStation = labName.trim() && labMessage.trim() && !labFreqConflict.conflict && labFreq >= 87.5 && labFreq <= 108.0;
+
   return (
     <main className="radio">
       <section className="hero">
         <p className="eyebrow">频段缝隙</p>
         <div className="hero-header">
           <h1>旋进没人值守的电台</h1>
-          <button className="favorites-trigger" onClick={() => setDrawerOpen(true)}>
-            <span className="favorites-trigger-icon">★</span>
-            <span>收藏电台</span>
-            {favoriteStations.length > 0 && <span className="favorites-count">{favoriteStations.length}</span>}
-          </button>
+          <div className="hero-actions">
+            <button className="lab-trigger" onClick={() => setLabOpen(true)}>
+              <span className="lab-trigger-icon">⚗</span>
+              <span>自定义电台实验室</span>
+              {customStations.length > 0 && <span className="lab-count">{customStations.length}</span>}
+            </button>
+            <button className="favorites-trigger" onClick={() => setDrawerOpen(true)}>
+              <span className="favorites-trigger-icon">★</span>
+              <span>收藏电台</span>
+              {favoriteStations.length > 0 && <span className="favorites-count">{favoriteStations.length}</span>}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -376,6 +501,7 @@ export default function App() {
               {frequency.toFixed(1)} MHz
               {isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
               {currentBroadcast?.scheduleName && <em className="schedule-tag">▸ {currentBroadcast.scheduleName}</em>}
+              {currentStation?.isCustom && <em className="custom-tag">自建</em>}
             </span>
             <strong>{currentStation ? currentStation.name : "沙沙声"}</strong>
             <p>{currentBroadcast ? currentBroadcast.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
@@ -410,7 +536,7 @@ export default function App() {
         <aside className="log-panel">
           <h2>发现记录</h2>
           <div className="stations">
-            {stations.map((station) => {
+            {allStations.map((station) => {
               const found = save.discovered.includes(station.id);
               const note = save.notes[station.id];
               const isEditing = editingNoteId === station.id;
@@ -422,6 +548,7 @@ export default function App() {
                     <strong>
                       {found ? station.name : "未识别频段"}
                       {stationBroadcast?.scheduleName && <em className="schedule-tag-inline">▸ {stationBroadcast.scheduleName}</em>}
+                      {station.isCustom && <em className="custom-tag-inline">自建</em>}
                     </strong>
                     <p>{found ? stationBroadcast?.message ?? station.message : "继续调频寻找它。"}</p>
                     {found && note && !isEditing && (
@@ -471,7 +598,7 @@ export default function App() {
         <aside className="archive-panel">
           <h2>电台档案</h2>
           <div className="archive-list">
-            {stations.map((station) => {
+            {allStations.map((station) => {
               const found = save.discovered.includes(station.id);
               const isExpanded = expandedArchive === station.id;
               const isFavorite = save.favorites.includes(station.id);
@@ -492,6 +619,7 @@ export default function App() {
                       <strong>
                         {found ? station.name : "未知记录"}
                         {stationBroadcast?.scheduleName && <em className="schedule-tag-inline">▸ {stationBroadcast.scheduleName}</em>}
+                        {station.isCustom && <em className="custom-tag-inline">自建</em>}
                       </strong>
                       {found ? (
                         <p className="archive-time">{formatDiscoveredTime(discoveredAt)}</p>
@@ -527,23 +655,25 @@ export default function App() {
                           {stationBroadcast?.message ?? station.message}
                         </p>
                       </div>
-                      <div className="detail-row detail-row-schedules">
-                        <label>节目时段</label>
-                        <div className="schedules-list">
-                          {station.schedules.map((schedule) => {
-                            const isActive = stationBroadcast?.scheduleName === schedule.name;
-                            return (
-                              <div key={schedule.id} className={`schedule-item ${isActive ? "active" : ""}`}>
-                                <div className="schedule-item-header">
-                                  <span className="schedule-name">{schedule.name}</span>
-                                  <span className="schedule-time">{schedule.startTime} — {schedule.endTime}</span>
+                      {station.schedules.length > 0 && (
+                        <div className="detail-row detail-row-schedules">
+                          <label>节目时段</label>
+                          <div className="schedules-list">
+                            {station.schedules.map((schedule) => {
+                              const isActive = stationBroadcast?.scheduleName === schedule.name;
+                              return (
+                                <div key={schedule.id} className={`schedule-item ${isActive ? "active" : ""}`}>
+                                  <div className="schedule-item-header">
+                                    <span className="schedule-name">{schedule.name}</span>
+                                    <span className="schedule-time">{schedule.startTime} — {schedule.endTime}</span>
+                                  </div>
+                                  <p className="schedule-message">{schedule.message}</p>
                                 </div>
-                                <p className="schedule-message">{schedule.message}</p>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <div className="detail-row">
                         <label>发现时间</label>
                         <span>{formatArchiveDetailTime(discoveredAt)}</span>
@@ -601,6 +731,21 @@ export default function App() {
                           )}
                         </div>
                       </div>
+                      {station.isCustom && (
+                        <div className="detail-row">
+                          <label>管理</label>
+                          <button
+                            className="detail-delete-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteCustomStation(station.id);
+                              setExpandedArchive(null);
+                            }}
+                          >
+                            删除此电台
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </article>
@@ -650,7 +795,10 @@ export default function App() {
                       {station.frequency.toFixed(1)}
                     </span>
                     <div className="favorite-info">
-                      <strong>{station.name}</strong>
+                      <strong>
+                        {station.name}
+                        {station.isCustom && <em className="custom-tag-inline">自建</em>}
+                      </strong>
                       <p className="favorite-time">{formatLastListenedTime(lastListened)}</p>
                     </div>
                     <div className="favorite-actions">
@@ -674,6 +822,158 @@ export default function App() {
               })}
             </div>
           )}
+        </div>
+      </aside>
+
+      <div className={`drawer-overlay ${labOpen ? "open" : ""}`} onClick={closeLab} />
+      <aside className={`lab-drawer ${labOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>自定义电台实验室</h2>
+            <p className="drawer-subtitle">
+              创建你的私人电台，加入调频系统
+            </p>
+          </div>
+          <button className="drawer-close" onClick={closeLab}>
+            ✕
+          </button>
+        </header>
+
+        <div className="drawer-content">
+          <div className="lab-form">
+            <div className="lab-form-section">
+              <h3 className="lab-form-title">新建电台</h3>
+
+              <div className="lab-field">
+                <label className="lab-label">电台名称</label>
+                <input
+                  className="lab-input"
+                  type="text"
+                  value={labName}
+                  onChange={(e) => setLabName(e.target.value)}
+                  placeholder="为你的电台取个名字"
+                  maxLength={20}
+                />
+              </div>
+
+              <div className="lab-field">
+                <label className="lab-label">频率 (MHz)</label>
+                <div className="lab-freq-control">
+                  <input
+                    className="lab-input lab-freq-input"
+                    type="number"
+                    min="87.5"
+                    max="108"
+                    step="0.1"
+                    value={labFreq}
+                    onChange={(e) => setLabFreq(Number(e.target.value))}
+                  />
+                  <input
+                    className="lab-freq-slider"
+                    type="range"
+                    min="87.5"
+                    max="108"
+                    step="0.1"
+                    value={labFreq}
+                    onChange={(e) => setLabFreq(Number(e.target.value))}
+                  />
+                </div>
+                {labFreqConflict.conflict && labFreqConflict.nearestStation && (
+                  <p className="lab-freq-warning">
+                    ⚠ 与「{labFreqConflict.nearestStation.name}」({labFreqConflict.nearestStation.frequency.toFixed(1)} MHz) 仅距 {labFreqConflict.gap.toFixed(1)} MHz，信号会互相干扰（最小间隔 {MIN_FREQ_GAP} MHz）
+                  </p>
+                )}
+                {!labFreqConflict.conflict && labFreq >= 87.5 && labFreq <= 108.0 && (
+                  <p className="lab-freq-ok">
+                    ✓ 频率可用，距最近电台 {labFreqConflict.nearestStation ? `${labFreqConflict.gap.toFixed(1)} MHz` : "无"}
+                  </p>
+                )}
+                {(labFreq < 87.5 || labFreq > 108.0) && (
+                  <p className="lab-freq-warning">
+                    ⚠ 频率超出调频范围 (87.5 – 108.0 MHz)
+                  </p>
+                )}
+              </div>
+
+              <div className="lab-field">
+                <label className="lab-label">标识颜色</label>
+                <div className="lab-color-picker">
+                  {PRESET_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      className={`lab-color-swatch ${labColor === c ? "active" : ""}`}
+                      style={{ background: c }}
+                      onClick={() => setLabColor(c)}
+                    />
+                  ))}
+                  <label className="lab-color-custom">
+                    <input
+                      type="color"
+                      value={labColor}
+                      onChange={(e) => setLabColor(e.target.value)}
+                    />
+                    <span className="lab-color-custom-label" style={{ borderColor: labColor }}>自定义</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="lab-field">
+                <label className="lab-label">播报文本</label>
+                <textarea
+                  className="lab-textarea"
+                  value={labMessage}
+                  onChange={(e) => setLabMessage(e.target.value)}
+                  placeholder="写下你的电台会播出的内容…"
+                  rows={3}
+                  maxLength={200}
+                />
+                <span className="lab-char-count">{labMessage.length}/200</span>
+              </div>
+
+              <button
+                className="lab-add-btn"
+                onClick={addCustomStation}
+                disabled={!canAddStation}
+              >
+                加入调频系统
+              </button>
+            </div>
+
+            {customStations.length > 0 && (
+              <div className="lab-form-section">
+                <h3 className="lab-form-title">已创建的自定义电台</h3>
+                <div className="lab-existing-list">
+                  {customStations.map((cs) => {
+                    const found = save.discovered.includes(cs.id);
+                    const isFav = save.favorites.includes(cs.id);
+                    return (
+                      <article key={cs.id} className="lab-existing-item">
+                        <span className="lab-existing-freq" style={{ background: cs.color }}>
+                          {cs.frequency.toFixed(1)}
+                        </span>
+                        <div className="lab-existing-info">
+                          <strong>{cs.name}</strong>
+                          <p>{cs.message.length > 40 ? cs.message.slice(0, 40) + "…" : cs.message}</p>
+                          <div className="lab-existing-badges">
+                            {found && <span className="lab-badge lab-badge-found">已发现</span>}
+                            {!found && <span className="lab-badge lab-badge-unfound">未发现</span>}
+                            {isFav && <span className="lab-badge lab-badge-fav">已收藏</span>}
+                          </div>
+                        </div>
+                        <button
+                          className="lab-delete-btn"
+                          onClick={() => deleteCustomStation(cs.id)}
+                          title="删除此电台"
+                        >
+                          ✕
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </aside>
     </main>

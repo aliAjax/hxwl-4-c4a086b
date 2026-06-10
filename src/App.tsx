@@ -50,6 +50,9 @@ import {
   getAchievementUnlockHint,
   getAchievementProgress,
   formatUnlockedTime,
+  getVisibleAchievements,
+  getTotalAchievementCount,
+  getUnlockedVisibleCount,
   type Achievement,
   type AchievementSave,
   type AchievementContext as AchCtx
@@ -957,7 +960,7 @@ export default function App() {
               <span className="achievement-trigger-icon">🏆</span>
               <span>调频成就</span>
               <span className="achievement-count">
-                {achievementSave.unlocked.length}/{achievements.filter((a) => !a.isHidden).length}
+                {getUnlockedVisibleCount(achievementSave.unlocked)}/{getTotalAchievementCount(achievementSave.unlocked)}
               </span>
             </button>
           </div>
@@ -2094,7 +2097,7 @@ export default function App() {
           <div>
             <h2>调频成就</h2>
             <p className="drawer-subtitle">
-              已解锁 {achievementSave.unlocked.length} / {achievements.filter((a) => !a.isHidden).length} 项成就
+              已解锁 {getUnlockedVisibleCount(achievementSave.unlocked)} / {getTotalAchievementCount(achievementSave.unlocked)} 项成就
             </p>
           </div>
           <button className="drawer-close" onClick={() => setAchievementOpen(false)}>
@@ -2108,8 +2111,8 @@ export default function App() {
               <i
                 style={{
                   width: `${
-                    (achievementSave.unlocked.length /
-                      Math.max(achievements.filter((a) => !a.isHidden).length, 1)) *
+                    (getUnlockedVisibleCount(achievementSave.unlocked) /
+                      Math.max(getTotalAchievementCount(achievementSave.unlocked), 1)) *
                     100
                   }%`
                 }}
@@ -2118,13 +2121,9 @@ export default function App() {
           </div>
 
           <div className="achievement-list">
-            {achievements.map((achievement) => {
+            {getVisibleAchievements(achievementSave.unlocked).map((achievement) => {
               const isUnlocked = achievementSave.unlocked.includes(achievement.id);
-              const isHidden = achievement.isHidden && !isUnlocked;
-
-              if (isHidden) return null;
-
-              const progress = getAchievementProgress(achievement, achievementContext);
+              const progress = getAchievementProgress(achievement, achievementContext, achievementSave.unlocked);
               const unlockedAt = achievementSave.unlockedAt[achievement.id];
 
               return (

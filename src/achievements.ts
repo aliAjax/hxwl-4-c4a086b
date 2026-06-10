@@ -223,7 +223,7 @@ export type AchievementContext = {
 function checkCondition(
   condition: AchievementCondition,
   ctx: AchievementContext,
-  currentUnlockedCount: number
+  currentUnlockedIds: string[]
 ): boolean {
   switch (condition.type) {
     case "discoverCount":
@@ -251,9 +251,10 @@ function checkCondition(
       return ctx.tapesCount >= condition.count;
     case "anomalyTapeCount":
       return ctx.anomalyTapesCount >= condition.count;
-    case "allAchievements":
+    case "allAchievements": {
       const nonAllIds = achievements.filter((a) => a.condition.type !== "allAchievements").map((a) => a.id);
-      return nonAllIds.length > 0 && nonAllIds.every((id) => currentUnlockedCount >= nonAllIds.length || id === "");
+      return nonAllIds.length > 0 && nonAllIds.every((id) => currentUnlockedIds.includes(id));
+    }
     default:
       return false;
   }
@@ -268,7 +269,7 @@ export function checkNewlyUnlocked(
 
   for (const achievement of nonAllAchievements) {
     if (!save.unlocked.includes(achievement.id)) {
-      if (checkCondition(achievement.condition, ctx, save.unlocked.length)) {
+      if (checkCondition(achievement.condition, ctx, save.unlocked)) {
         newly.push(achievement);
       }
     }
@@ -276,11 +277,8 @@ export function checkNewlyUnlocked(
 
   const allAch = achievements.find((a) => a.condition.type === "allAchievements");
   if (allAch && !save.unlocked.includes(allAch.id)) {
-    const nonAllIds = nonAllAchievements.map((a) => a.id);
-    const allNonAllUnlocked = nonAllIds.every(
-      (id) => save.unlocked.includes(id) || newly.some((n) => n.id === id)
-    );
-    if (allNonAllUnlocked) {
+    const idsAfterUnlock = [...save.unlocked, ...newly.map((n) => n.id)];
+    if (checkCondition(allAch.condition, ctx, idsAfterUnlock)) {
       newly.push(allAch);
     }
   }
@@ -375,7 +373,8 @@ export function getAchievementUnlockHint(
 
 export function getAchievementProgress(
   achievement: Achievement,
-  ctx: AchievementContext
+  ctx: AchievementContext,
+  unlockedIds: string[]
 ): { current: number; total: number } | null {
   const c = achievement.condition;
   switch (c.type) {
@@ -413,9 +412,11 @@ export function getAchievementProgress(
       return { current: Math.min(ctx.tapesCount, c.count), total: c.count };
     case "anomalyTapeCount":
       return { current: Math.min(ctx.anomalyTapesCount, c.count), total: c.count };
-    case "allAchievements":
-      const nonAll = achievements.filter((a) => a.condition.type !== "allAchievements").length;
-      return { current: nonAll, total: nonAll };
+    case "allAchievements": {
+      const nonAllIds = achievements.filter((a) => a.condition.type !== "allAchievements").map((a) => a.id);
+      const unlockedNonAll = nonAllIds.filter((id) => unlockedIds.includes(id)).length;
+      return { current: unlockedNonAll, total: nonAllIds.length };
+    }
     default:
       return null;
   }
@@ -430,4 +431,16 @@ export function formatUnlockedTime(timestamp: number | undefined): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+export function getVisibleAchievements(unlockedIds: string[]): Achievement[] {
+  return achievements.filter((a) => !a.isHidden || unlockedIds.includes(a.id));
+}
+
+export function getTotalAchievementCount(unlockedIds: string[]): number {
+  return getVisibleAchievements(unlockedIds).length;
+}
+
+export function getUnlockedVisibleCount(unlockedIds: string[]): number {
+  return getVisibleAchievements(unlockedIds).filter((a) => unlockedIds.includes(a.id)).length;
 }

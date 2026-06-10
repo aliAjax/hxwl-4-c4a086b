@@ -1,4 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  storyChapters,
+  loadStorylineSave,
+  saveStorylineSave,
+  migrateStorylineIfNeeded,
+  checkNewlyUnlocked,
+  getChapterUnlockHint,
+  type StorylineSave,
+  type StoryChapter,
+  type StoryFragment
+} from "./storyline";
 
 type Schedule = {
   id: string;
@@ -268,6 +279,12 @@ export default function App() {
   const [labColor, setLabColor] = useState("#e8c36a");
   const [labMessage, setLabMessage] = useState("");
 
+  const [storylineSave, setStorylineSave] = useState<StorylineSave>(loadStorylineSave);
+  const [storylineOpen, setStorylineOpen] = useState(false);
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+  const [activeFragmentId, setActiveFragmentId] = useState<string | null>(null);
+  const [newUnlockToast, setNewUnlockToast] = useState<string | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
@@ -340,6 +357,123 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(customStationsKey, JSON.stringify(customStations));
   }, [customStations]);
+
+  useEffect(() => {
+    const migrated = migrateStorylineIfNeeded(storylineSave, save.discovered, save.favorites);
+    if (migrated !== storylineSave) {
+      setStorylineSave(migrated);
+    }
+  }, [save.discovered, save.favorites, storylineSave]);
+
+  useEffect(() => {
+    const newly = checkNewlyUnlocked(storyChapters, storylineSave, save.discovered, save.favorites);
+    if (newly.length > 0) {
+      const now = Date.now();
+      setStorylineSave((current) => {
+        const next = { ...current };
+        next.unlockedChapters = [...next.unlockedChapters, ...newly];
+        next.unlockedAt = { ...next.unlockedAt };
+        for (const id of newly) {
+          next.unlockedAt[id] = now;
+        }
+        return next;
+      });
+      const firstNew = newly[0];
+      const chapter = storyChapters.find((c) => c.id === firstNew);
+      if (chapter) {
+        setNewUnlockToast(chapter.title);
+        setTimeout(() => setNewUnlockToast(null), 4000);
+      }
+    }
+  }, [save.discovered, save.favorites]);
+
+  useEffect(() => {
+    saveStorylineSave(storylineSave);
+  }, [storylineSave]);
+
+  function openStoryline() {
+    setStorylineOpen(true);
+    setActiveChapterId(null);
+    setActiveFragmentId(null);
+  }
+
+  function closeStoryline() {
+    setStorylineOpen(false);
+  }
+
+  function openChapter(chapterId: string) {
+    setActiveChapterId(chapterId);
+    setActiveFragmentId(null);
+  }
+
+  function backToChapters() {
+    setActiveChapterId(null);
+    setActiveFragmentId(null);
+  }
+
+  function openFragment(fragmentId: string) {
+    setActiveFragmentId(fragmentId);
+    setStorylineSave((current) => {
+      if (current.readFragments.includes(fragmentId)) {
+        return {
+          ...current,
+          lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+        };
+      }
+      return {
+        ...current,
+        readFragments: [...current.readFragments, fragmentId],
+        lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+      };
+    });
+  }
+
+  function prevFragment() {
+    if (!activeChapterId || !activeFragmentId) return;
+    const chapter = storyChapters.find((c) => c.id === activeChapterId);
+    if (!chapter) return;
+    const idx = chapter.fragments.findIndex((f) => f.id === activeFragmentId);
+    if (idx > 0) {
+      openFragment(chapter.fragments[idx - 1].id);
+    }
+  }
+
+  function nextFragment() {
+    if (!activeChapterId || !activeFragmentId) return;
+    const chapter = storyChapters.find((c) => c.id === activeChapterId);
+    if (!chapter) return;
+    const idx = chapter.fragments.findIndex((f) => f.id === activeFragmentId);
+    if (idx < chapter.fragments.length - 1) {
+      openFragment(chapter.fragments[idx + 1].id);
+    }
+  }
+
+  const unlockedChapters = useMemo(
+    () => storyChapters.filter((ch) => storylineSave.unlockedChapters.includes(ch.id)),
+    [storylineSave.unlockedChapters]
+  );
+
+  const activeChapter = useMemo(
+    () => storyChapters.find((c) => c.id === activeChapterId) || null,
+    [activeChapterId]
+  );
+
+  const activeFragment = useMemo(() => {
+    if (!activeChapter || !activeFragmentId) return null;
+    return activeChapter.fragments.find((f) => f.id === activeFragmentId) || null;
+  }, [activeChapter, activeFragmentId]);
+
+  const unreadCount = useMemo(() => {
+    let count = 0;
+    for (const chapter of unlockedChapters) {
+      for (const fragment of chapter.fragments) {
+        if (!storylineSave.readFragments.includes(fragment.id)) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }, [unlockedChapters, storylineSave.readFragments]);
 
   useEffect(() => {
     if (!isScanning || scanPaused) return;
@@ -480,6 +614,11 @@ export default function App() {
         <div className="hero-header">
           <h1>旋进没人值守的电台</h1>
           <div className="hero-actions">
+            <button className="storyline-trigger" onClick={openStoryline}>
+              <span className="storyline-trigger-icon">📖</span>
+              <span>故事线</span>
+              {unreadCount > 0 && <span className="storyline-count">{unreadCount}</span>}
+            </button>
             <button className="lab-trigger" onClick={() => setLabOpen(true)}>
               <span className="lab-trigger-icon">⚗</span>
               <span>自定义电台实验室</span>
@@ -974,6 +1113,184 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      </aside>
+
+      <div className={`storyline-toast ${newUnlockToast ? "show" : ""}`}>
+        <span className="storyline-toast-icon">✨</span>
+        <div className="storyline-toast-content">
+          <strong>新章节解锁</strong>
+          <p>{newUnlockToast}</p>
+        </div>
+      </div>
+
+      <div className={`drawer-overlay ${storylineOpen ? "open" : ""}`} onClick={closeStoryline} />
+      <aside className={`storyline-drawer ${storylineOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>{activeChapter ? activeChapter.title : "故事线"}</h2>
+            <p className="drawer-subtitle">
+              {activeChapter
+                ? activeChapter.subtitle
+                : `已解锁 ${unlockedChapters.length} / ${storyChapters.filter((c) => !c.isHidden).length} 章`}
+            </p>
+          </div>
+          <button className="drawer-close" onClick={closeStoryline}>
+            ✕
+          </button>
+        </header>
+
+        <div className="drawer-content">
+          {!activeChapter && (
+            <div className="storyline-chapter-list">
+              {storyChapters.map((chapter) => {
+                const isUnlocked = storylineSave.unlockedChapters.includes(chapter.id);
+                const totalFragments = chapter.fragments.length;
+                const readFragments = chapter.fragments.filter((f) =>
+                  storylineSave.readFragments.includes(f.id)
+                ).length;
+                const isHidden = chapter.isHidden && !isUnlocked;
+
+                if (isHidden) return null;
+
+                return (
+                  <article
+                    key={chapter.id}
+                    className={`storyline-chapter-card ${isUnlocked ? "unlocked" : "locked"}`}
+                    onClick={() => isUnlocked && openChapter(chapter.id)}
+                  >
+                    <div
+                      className="storyline-chapter-icon"
+                      style={{ background: isUnlocked ? chapter.color : "#2d3434" }}
+                    >
+                      {isUnlocked ? "📖" : "🔒"}
+                    </div>
+                    <div className="storyline-chapter-info">
+                      <strong style={{ color: isUnlocked ? chapter.color : "#5a6b6d" }}>
+                        {chapter.title}
+                      </strong>
+                      <p className="storyline-chapter-subtitle">{chapter.subtitle}</p>
+                      {isUnlocked ? (
+                        <div className="storyline-progress">
+                          <div className="storyline-progress-bar">
+                            <i
+                              style={{
+                                width: `${(readFragments / totalFragments) * 100}%`,
+                                background: chapter.color
+                              }}
+                            />
+                          </div>
+                          <span className="storyline-progress-text">
+                            {readFragments}/{totalFragments} 片段
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="storyline-unlock-hint">{getChapterUnlockHint(chapter)}</p>
+                      )}
+                    </div>
+                    {isUnlocked && <span className="storyline-chapter-arrow">▶</span>}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {activeChapter && !activeFragment && (
+            <div className="storyline-fragment-list">
+              <button className="storyline-back-btn" onClick={backToChapters}>
+                ← 返回章节列表
+              </button>
+              <div className="storyline-chapter-header">
+                <h3
+                  className="storyline-chapter-title"
+                  style={{ color: activeChapter.color }}
+                >
+                  {activeChapter.title}
+                </h3>
+                <p className="storyline-chapter-desc">{activeChapter.subtitle}</p>
+              </div>
+              <div className="storyline-fragments">
+                {activeChapter.fragments.map((fragment, index) => {
+                  const isRead = storylineSave.readFragments.includes(fragment.id);
+                  return (
+                    <button
+                      key={fragment.id}
+                      className={`storyline-fragment-card ${isRead ? "read" : ""}`}
+                      onClick={() => openFragment(fragment.id)}
+                      style={{
+                        borderColor: isRead ? `${activeChapter.color}40` : "transparent"
+                      }}
+                    >
+                      <span
+                        className="storyline-fragment-num"
+                        style={{ background: isRead ? activeChapter.color : "#2d3434" }}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="storyline-fragment-info">
+                        <strong>{fragment.title}</strong>
+                        <p className="storyline-fragment-status">
+                          {isRead ? "✓ 已阅读" : "未阅读"}
+                        </p>
+                      </div>
+                      <span className="storyline-fragment-arrow">▶</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeChapter && activeFragment && (
+            <div className="storyline-reader">
+              <div className="storyline-reader-header">
+                <button className="storyline-back-btn" onClick={() => setActiveFragmentId(null)}>
+                  ← 返回片段列表
+                </button>
+              </div>
+              <article
+                className="storyline-reader-content"
+                style={{ borderTopColor: activeChapter.color }}
+              >
+                <h3
+                  className="storyline-reader-title"
+                  style={{ color: activeChapter.color }}
+                >
+                  {activeFragment.title}
+                </h3>
+                <div className="storyline-reader-body">
+                  {activeFragment.content.split("\n").map((line, i) => (
+                    <p key={i}>{line || "\u00A0"}</p>
+                  ))}
+                </div>
+              </article>
+              <div className="storyline-reader-nav">
+                <button
+                  className="storyline-nav-btn prev"
+                  onClick={prevFragment}
+                  disabled={
+                    activeChapter.fragments.findIndex((f) => f.id === activeFragment.id) === 0
+                  }
+                >
+                  ← 上一篇
+                </button>
+                <span className="storyline-nav-indicator">
+                  {activeChapter.fragments.findIndex((f) => f.id === activeFragment.id) + 1} /{" "}
+                  {activeChapter.fragments.length}
+                </span>
+                <button
+                  className="storyline-nav-btn next"
+                  onClick={nextFragment}
+                  disabled={
+                    activeChapter.fragments.findIndex((f) => f.id === activeFragment.id) ===
+                    activeChapter.fragments.length - 1
+                  }
+                >
+                  下一篇 →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
     </main>

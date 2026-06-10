@@ -40,7 +40,13 @@ function signalFor(frequency: number, station: Station) {
   return Math.max(0, 100 - Math.abs(frequency - station.frequency) * 80);
 }
 
-function formatDiscoveredTime(timestamp: number): string {
+function isValidTimestamp(timestamp: number | undefined): timestamp is number {
+  return typeof timestamp === "number" && Number.isFinite(timestamp);
+}
+
+function formatDiscoveredTime(timestamp: number | undefined): string {
+  if (!isValidTimestamp(timestamp)) return "发现时间未记录";
+
   const date = new Date(timestamp);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -60,6 +66,12 @@ function formatDiscoveredTime(timestamp: number): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatArchiveDetailTime(timestamp: number | undefined): string {
+  if (!isValidTimestamp(timestamp)) return "发现时间未记录";
+
+  return new Date(timestamp).toLocaleString("zh-CN");
 }
 
 export default function App() {
@@ -190,7 +202,7 @@ export default function App() {
                       </div>
                       <div className="detail-row">
                         <label>发现时间</label>
-                        <span>{new Date(discoveredAt).toLocaleString("zh-CN")}</span>
+                        <span>{formatArchiveDetailTime(discoveredAt)}</span>
                       </div>
                       <div className="detail-row">
                         <label>收藏状态</label>

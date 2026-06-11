@@ -1256,17 +1256,13 @@ export default function App() {
     const isAnomaly = currentDailyMessage !== null && !currentStation?.isCustom;
     const stationChanged = patrolStation?.id !== nightPatrolLastVisitedId;
 
-    let pauseDuration = 0;
     let reason: "strong" | "weak" | "anomaly" | null = null;
 
     if (hasPatrolStation && isAnomaly && signal >= SCAN_LOCK_THRESHOLD) {
-      pauseDuration = NIGHT_PATROL_ANOMALY_PAUSE_DURATION;
       reason = "anomaly";
     } else if (signal >= SCAN_LOCK_THRESHOLD) {
-      pauseDuration = NIGHT_PATROL_STRONG_PAUSE_DURATION;
       reason = "strong";
     } else if (signal >= SCAN_PAUSE_THRESHOLD) {
-      pauseDuration = NIGHT_PATROL_WEAK_PAUSE_DURATION;
       reason = "weak";
     }
 
@@ -1288,15 +1284,6 @@ export default function App() {
           anomaliesFound: s.anomaliesFound + 1
         }));
       }
-
-      if (nightPatrolAutoResume) {
-        const timer = setTimeout(() => {
-          setScanPaused(false);
-          setNightPatrolPaused(false);
-          setNightPatrolPauseReason(null);
-        }, pauseDuration);
-        return () => clearTimeout(timer);
-      }
     }
   }, [
     tuned.signal,
@@ -1306,9 +1293,31 @@ export default function App() {
     patrolStation,
     currentStation,
     currentDailyMessage,
-    nightPatrolLastVisitedId,
-    nightPatrolAutoResume
+    nightPatrolLastVisitedId
   ]);
+
+  useEffect(() => {
+    if (!isNightPatrol || !nightPatrolPaused || !nightPatrolAutoResume) return;
+
+    let duration = 0;
+    if (nightPatrolPauseReason === "anomaly") {
+      duration = NIGHT_PATROL_ANOMALY_PAUSE_DURATION;
+    } else if (nightPatrolPauseReason === "strong") {
+      duration = NIGHT_PATROL_STRONG_PAUSE_DURATION;
+    } else if (nightPatrolPauseReason === "weak") {
+      duration = NIGHT_PATROL_WEAK_PAUSE_DURATION;
+    }
+
+    if (duration === 0) return;
+
+    const timer = setTimeout(() => {
+      setScanPaused(false);
+      setNightPatrolPaused(false);
+      setNightPatrolPauseReason(null);
+    }, duration);
+
+    return () => clearTimeout(timer);
+  }, [isNightPatrol, nightPatrolPaused, nightPatrolAutoResume, nightPatrolPauseReason]);
 
   function toggleScan() {
     if (isScanning) {

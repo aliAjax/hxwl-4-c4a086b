@@ -43,12 +43,26 @@ function getStationName(id: string): string {
   return stationNameMap[id] || id;
 }
 
-function isContentRecorded(stationIds: string[], title: string, tapes: SignalTape[]): boolean {
-  return tapes.some((tape) => {
-    if (!stationIds.includes(tape.stationId)) return false;
-    if (tape.scheduleName && tape.scheduleName.includes(title)) return true;
-    if (title && tape.content.includes(title.slice(0, 20))) return true;
-    return false;
+function normalizeRecordedContent(content: string): string {
+  return content.replace(/\s+/g, "");
+}
+
+function hasRecordedStation(stationIds: string[], tapes: SignalTape[]): boolean {
+  return tapes.some((tape) => stationIds.includes(tape.stationId));
+}
+
+function isDailyBroadcastRecorded(
+  broadcast: DailyBroadcast,
+  tapes: SignalTape[]
+): boolean {
+  return broadcast.messages.some((message) => {
+    const messageContent = normalizeRecordedContent(message.content);
+
+    return tapes.some((tape) => {
+      if (tape.stationId !== message.stationId) return false;
+      const tapeContent = normalizeRecordedContent(tape.content);
+      return tapeContent === messageContent;
+    });
   });
 }
 
@@ -84,7 +98,7 @@ function buildStoryItems(
     const unlockedAt = storylineSave.unlockedAt[chapter.id] || 0;
     const stationIds = getStoryChapterStationIds(chapter);
     const stationNames = stationIds.map(getStationName);
-    const isRecorded = isContentRecorded(stationIds, chapter.title, tapes);
+    const isRecorded = hasRecordedStation(stationIds, tapes);
 
     const firstUnreadFragment = chapter.fragments.find(
       (f) => !storylineSave.readFragments.includes(f.id)
@@ -129,7 +143,7 @@ function buildDailyItems(
 
     const discoveredAt = dailySave.discoveredAt[broadcast.id] || 0;
     const stationNames = broadcast.stationIds.map(getStationName);
-    const isRecorded = isContentRecorded(broadcast.stationIds, broadcast.title, tapes);
+    const isRecorded = isDailyBroadcastRecorded(broadcast, tapes);
 
     const firstUnreadFragment = broadcast.fragments.find(
       (f) => !dailySave.readFragments.includes(f.id)
@@ -167,7 +181,8 @@ function buildDailyItems(
 
 function buildPuzzleItems(
   puzzles: SignalPuzzle[],
-  puzzleSave: SignalPuzzleSave
+  puzzleSave: SignalPuzzleSave,
+  tapes: SignalTape[]
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
 
@@ -176,6 +191,7 @@ function buildPuzzleItems(
 
     const solvedAt = puzzleSave.solvedAt[puzzle.id] || 0;
     const stationName = getStationName(puzzle.stationId);
+    const isRecorded = hasRecordedStation([puzzle.stationId], tapes);
 
     items.push({
       id: `puzzle-${puzzle.id}`,
@@ -188,6 +204,7 @@ function buildPuzzleItems(
       isUnread: false,
       stationIds: [puzzle.stationId],
       stationNames: [stationName],
+      isRecorded,
       target: {
         type: "puzzle",
         puzzleId: puzzle.id,
@@ -236,7 +253,7 @@ export function buildTimeline(
   const tapes = tapeSave.tapes;
   const storyItems = buildStoryItems(storyChapters, storylineSave, tapes);
   const dailyItems = buildDailyItems(dailyBroadcasts, dailySave, tapes);
-  const puzzleItems = buildPuzzleItems(signalPuzzles, puzzleSave);
+  const puzzleItems = buildPuzzleItems(signalPuzzles, puzzleSave, tapes);
   const tapeItems = buildTapeItems(tapes);
 
   const allItems = [...storyItems, ...dailyItems, ...puzzleItems, ...tapeItems];

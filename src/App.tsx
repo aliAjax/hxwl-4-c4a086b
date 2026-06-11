@@ -6,9 +6,11 @@ import {
   migrateStorylineIfNeeded,
   checkNewlyUnlocked as checkStoryNewlyUnlocked,
   getChapterUnlockHint,
+  getContinueReading,
   type StorylineSave,
   type StoryChapter,
-  type StoryFragment
+  type StoryFragment,
+  type ContinueReadingResult
 } from "./storyline";
 import {
   dailyBroadcasts,
@@ -27,9 +29,11 @@ import {
   getAnomalyLevelColor,
   getBroadcastState,
   getTodayBroadcast,
+  getDailyContinueReading,
   type DailyBroadcastSave,
   type DailyBroadcast,
-  type DailyFragment
+  type DailyFragment,
+  type DailyContinueReadingResult
 } from "./dailyBroadcast";
 import {
   loadSignalTapes,
@@ -930,6 +934,48 @@ export default function App() {
     setStorylineOpen(false);
   }
 
+  function handleContinueReading() {
+    if (!continueReadingTarget) return;
+
+    if (continueReadingTarget.type === "story") {
+      const { chapterId, fragmentId } = continueReadingTarget.data;
+      setStorylineOpen(true);
+      setActiveChapterId(chapterId);
+      setActiveFragmentId(fragmentId);
+      setStorylineSave((current) => {
+        if (current.readFragments.includes(fragmentId)) {
+          return {
+            ...current,
+            lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+          };
+        }
+        return {
+          ...current,
+          readFragments: [...current.readFragments, fragmentId],
+          lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+        };
+      });
+    } else {
+      const { broadcastId, fragmentId } = continueReadingTarget.data;
+      setDailyOpen(true);
+      setActiveDailyId(broadcastId);
+      setActiveDailyFragmentId(fragmentId);
+      setDailySave((current) => {
+        if (current.readFragments.includes(fragmentId)) {
+          return {
+            ...current,
+            lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+          };
+        }
+        return {
+          ...current,
+          readFragments: [...current.readFragments, fragmentId],
+          lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+        };
+      });
+    }
+  }
+
   function openChapter(chapterId: string) {
     setActiveChapterId(chapterId);
     setActiveFragmentId(null);
@@ -1003,6 +1049,66 @@ export default function App() {
     }
     return count;
   }, [unlockedChapters, storylineSave.readFragments]);
+
+  const storyContinueReading = useMemo(
+    () => getContinueReading(storyChapters, storylineSave),
+    [storylineSave]
+  );
+
+  const dailyContinueReading = useMemo(
+    () => getDailyContinueReading(dailyBroadcasts, dailySave),
+    [dailySave]
+  );
+
+  const continueReadingTarget = useMemo(() => {
+    const storyHasUnread = storyContinueReading && 
+      !storyChapters
+        .find(c => c.id === storyContinueReading.chapterId)
+        ?.fragments.every(f => storylineSave.readFragments.includes(f.id));
+    
+    const dailyHasUnread = dailyContinueReading && 
+      !dailyBroadcasts
+        .find(b => b.id === dailyContinueReading.broadcastId)
+        ?.fragments.every(f => dailySave.readFragments.includes(f.id));
+
+    if (storyHasUnread && dailyHasUnread) {
+      const storyTime = storylineSave.unlockedAt[storyContinueReading!.chapterId] || 0;
+      const dailyTime = dailySave.discoveredAt[dailyContinueReading!.broadcastId] || 0;
+      if (storyTime >= dailyTime) {
+        return { type: "story" as const, data: storyContinueReading! };
+      } else {
+        return { type: "daily" as const, data: dailyContinueReading! };
+      }
+    }
+
+    if (storyHasUnread) {
+      return { type: "story" as const, data: storyContinueReading! };
+    }
+
+    if (dailyHasUnread) {
+      return { type: "daily" as const, data: dailyContinueReading! };
+    }
+
+    if (storyContinueReading && dailyContinueReading) {
+      const storyTime = storylineSave.lastReadAt[storyContinueReading.fragmentId] || 0;
+      const dailyTime = dailySave.lastReadAt[dailyContinueReading.fragmentId] || 0;
+      if (storyTime >= dailyTime) {
+        return { type: "story" as const, data: storyContinueReading };
+      } else {
+        return { type: "daily" as const, data: dailyContinueReading };
+      }
+    }
+
+    if (storyContinueReading) {
+      return { type: "story" as const, data: storyContinueReading };
+    }
+
+    if (dailyContinueReading) {
+      return { type: "daily" as const, data: dailyContinueReading };
+    }
+
+    return null;
+  }, [storyContinueReading, dailyContinueReading, storylineSave, dailySave]);
 
   useEffect(() => {
     if (!isScanning || scanPaused) return;
@@ -1174,6 +1280,17 @@ export default function App() {
         <div className="hero-header">
           <h1>旋进没人值守的电台</h1>
           <div className="hero-actions">
+            {continueReadingTarget && (
+              <button className="continue-reading-trigger" onClick={handleContinueReading}>
+                <span className="continue-reading-icon">▶</span>
+                <span>继续阅读</span>
+                <span className="continue-reading-hint">
+                  {continueReadingTarget.type === "story"
+                    ? storyChapters.find(c => c.id === continueReadingTarget.data.chapterId)?.title
+                    : dailyBroadcasts.find(b => b.id === continueReadingTarget.data.broadcastId)?.title}
+                </span>
+              </button>
+            )}
             <button className="daily-trigger" onClick={openDailyBroadcast}>
               <span className="daily-trigger-icon">📡</span>
               <span>每日异常广播</span>

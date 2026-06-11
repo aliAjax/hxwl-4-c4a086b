@@ -765,3 +765,62 @@ export function getAnomalyLevelColor(level: string): string {
       return "#889697";
   }
 }
+
+export type DailyContinueReadingResult = {
+  broadcastId: string;
+  fragmentId: string;
+} | null;
+
+export function getDailyContinueReading(
+  broadcasts: DailyBroadcast[],
+  save: DailyBroadcastSave
+): DailyContinueReadingResult {
+  const discoveredBroadcasts = broadcasts.filter((b) =>
+    save.discoveredBroadcasts.includes(b.id)
+  );
+
+  const broadcastsWithUnread = discoveredBroadcasts.filter(
+    (b) => !b.fragments.every((f) => save.readFragments.includes(f.id))
+  );
+
+  if (broadcastsWithUnread.length > 0) {
+    broadcastsWithUnread.sort((a, b) => {
+      const timeA = save.discoveredAt[a.id] || 0;
+      const timeB = save.discoveredAt[b.id] || 0;
+      return timeB - timeA;
+    });
+
+    const targetBroadcast = broadcastsWithUnread[0];
+    const firstUnreadFragment = targetBroadcast.fragments.find(
+      (f) => !save.readFragments.includes(f.id)
+    );
+
+    if (firstUnreadFragment) {
+      return { broadcastId: targetBroadcast.id, fragmentId: firstUnreadFragment.id };
+    }
+  }
+
+  if (save.readFragments.length > 0) {
+    let latestFragmentId: string | null = null;
+    let latestTime = 0;
+
+    for (const fragmentId of save.readFragments) {
+      const readTime = save.lastReadAt[fragmentId] || 0;
+      if (readTime > latestTime) {
+        latestTime = readTime;
+        latestFragmentId = fragmentId;
+      }
+    }
+
+    if (latestFragmentId) {
+      for (const broadcast of discoveredBroadcasts) {
+        const fragment = broadcast.fragments.find((f) => f.id === latestFragmentId);
+        if (fragment) {
+          return { broadcastId: broadcast.id, fragmentId: latestFragmentId };
+        }
+      }
+    }
+  }
+
+  return null;
+}

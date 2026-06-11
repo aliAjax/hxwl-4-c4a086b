@@ -1845,11 +1845,16 @@ input[type="range"] {
     gap: 8px;
   }
 
+  .continue-reading-trigger,
   .storyline-trigger,
   .lab-trigger,
   .favorites-trigger {
     padding: 10px 16px;
     font-size: 0.9rem;
+  }
+
+  .continue-reading-hint {
+    display: none;
   }
 
   .stations article {
@@ -1926,6 +1931,45 @@ input[type="range"] {
     width: calc(100% - 32px);
     max-width: 360px;
   }
+}
+
+.continue-reading-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border: 1px solid rgba(232, 195, 106, 0.5);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(232, 195, 106, 0.2), rgba(232, 155, 106, 0.15));
+  color: #f0d68c;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 180ms ease;
+  box-shadow: 0 0 20px rgba(232, 195, 106, 0.15);
+}
+
+.continue-reading-trigger:hover {
+  background: linear-gradient(135deg, rgba(232, 195, 106, 0.3), rgba(232, 155, 106, 0.25));
+  border-color: rgba(232, 195, 106, 0.7);
+  box-shadow: 0 0 30px rgba(232, 195, 106, 0.25);
+  transform: translateY(-1px);
+}
+
+.continue-reading-icon {
+  font-size: 0.9rem;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(232, 195, 106, 0.3);
+}
+
+.continue-reading-hint {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #c4b58a;
+  opacity: 0.8;
 }
 
 .daily-trigger {

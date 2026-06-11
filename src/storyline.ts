@@ -444,3 +444,62 @@ export function migrateStorylineIfNeeded(
   }
   return next;
 }
+
+export type ContinueReadingResult = {
+  chapterId: string;
+  fragmentId: string;
+} | null;
+
+export function getContinueReading(
+  chapters: StoryChapter[],
+  save: StorylineSave
+): ContinueReadingResult {
+  const unlockedChapters = chapters.filter((ch) =>
+    save.unlockedChapters.includes(ch.id)
+  );
+
+  const chaptersWithUnread = unlockedChapters.filter(
+    (ch) => !ch.fragments.every((f) => save.readFragments.includes(f.id))
+  );
+
+  if (chaptersWithUnread.length > 0) {
+    chaptersWithUnread.sort((a, b) => {
+      const timeA = save.unlockedAt[a.id] || 0;
+      const timeB = save.unlockedAt[b.id] || 0;
+      return timeB - timeA;
+    });
+
+    const targetChapter = chaptersWithUnread[0];
+    const firstUnreadFragment = targetChapter.fragments.find(
+      (f) => !save.readFragments.includes(f.id)
+    );
+
+    if (firstUnreadFragment) {
+      return { chapterId: targetChapter.id, fragmentId: firstUnreadFragment.id };
+    }
+  }
+
+  if (save.readFragments.length > 0) {
+    let latestFragmentId: string | null = null;
+    let latestTime = 0;
+
+    for (const fragmentId of save.readFragments) {
+      const readTime = save.lastReadAt[fragmentId] || 0;
+      if (readTime > latestTime) {
+        latestTime = readTime;
+        latestFragmentId = fragmentId;
+      }
+    }
+
+    if (latestFragmentId) {
+      for (const chapter of unlockedChapters) {
+        const fragment = chapter.fragments.find((f) => f.id === latestFragmentId);
+        if (fragment) {
+          return { chapterId: chapter.id, fragmentId: latestFragmentId };
+        }
+      }
+    }
+  }
+
+  return null;
+}

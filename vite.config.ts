@@ -10,5 +10,10 @@ export default defineConfig({
   preview: {
     port: 6104,
     strictPort: true
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    include: ["src/**/*.test.ts"]
   }
 });

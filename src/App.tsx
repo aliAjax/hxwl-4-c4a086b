@@ -345,6 +345,7 @@ export default function App() {
   const [labFreq, setLabFreq] = useState(90.0);
   const [labColor, setLabColor] = useState("#e8c36a");
   const [labMessage, setLabMessage] = useState("");
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
 
   const [storylineSave, setStorylineSave] = useState<StorylineSave>(loadStorylineSave);
   const [storylineOpen, setStorylineOpen] = useState(false);
@@ -453,8 +454,8 @@ export default function App() {
   }, [favoriteStations]);
 
   const labFreqConflict = useMemo(() => {
-    return checkFrequencyConflict(labFreq, allStations);
-  }, [labFreq, allStations]);
+    return checkFrequencyConflict(labFreq, allStations, editingCustomId ?? undefined);
+  }, [labFreq, allStations, editingCustomId]);
 
   useEffect(() => {
     if (currentStation && !save.discovered.includes(currentStation.id)) {
@@ -1094,22 +1095,53 @@ export default function App() {
     setNoteDraft("");
   }
 
-  function addCustomStation() {
-    if (!labName.trim() || !labMessage.trim()) return;
-    if (labFreqConflict.conflict) return;
-    if (labFreq < 87.5 || labFreq > 108.0) return;
-    const newStation: CustomStation = {
-      id: `custom-${Date.now()}`,
-      name: labName.trim(),
-      frequency: Number(labFreq.toFixed(1)),
-      color: labColor,
-      message: labMessage.trim(),
-    };
-    setCustomStations((prev) => [...prev, newStation]);
+  function startEditCustomStation(id: string) {
+    const target = customStations.find((cs) => cs.id === id);
+    if (!target) return;
+    setEditingCustomId(id);
+    setLabName(target.name);
+    setLabFreq(target.frequency);
+    setLabColor(target.color);
+    setLabMessage(target.message);
+  }
+
+  function cancelEditCustomStation() {
+    setEditingCustomId(null);
     setLabName("");
     setLabFreq(90.0);
     setLabColor("#e8c36a");
     setLabMessage("");
+  }
+
+  function saveCustomStation() {
+    if (!labName.trim() || !labMessage.trim()) return;
+    if (labFreqConflict.conflict) return;
+    if (labFreq < 87.5 || labFreq > 108.0) return;
+    if (editingCustomId) {
+      setCustomStations((prev) =>
+        prev.map((cs) =>
+          cs.id === editingCustomId
+            ? {
+                ...cs,
+                name: labName.trim(),
+                frequency: Number(labFreq.toFixed(1)),
+                color: labColor,
+                message: labMessage.trim(),
+              }
+            : cs
+        )
+      );
+    } else {
+      const newStation: CustomStation = {
+        id: `custom-${Date.now()}`,
+        name: labName.trim(),
+        frequency: Number(labFreq.toFixed(1)),
+        color: labColor,
+        message: labMessage.trim(),
+      };
+      setCustomStations((prev) => [...prev, newStation]);
+    }
+    cancelEditCustomStation();
   }
 
   function deleteCustomStation(id: string) {
@@ -1123,17 +1155,17 @@ export default function App() {
       delete next.notes[id];
       return next;
     });
+    if (editingCustomId === id) {
+      cancelEditCustomStation();
+    }
   }
 
   function closeLab() {
     setLabOpen(false);
-    setLabName("");
-    setLabFreq(90.0);
-    setLabColor("#e8c36a");
-    setLabMessage("");
+    cancelEditCustomStation();
   }
 
-  const canAddStation = labName.trim() && labMessage.trim() && !labFreqConflict.conflict && labFreq >= 87.5 && labFreq <= 108.0;
+  const canSaveStation = labName.trim() && labMessage.trim() && !labFreqConflict.conflict && labFreq >= 87.5 && labFreq <= 108.0;
 
   return (
     <main className="radio">
@@ -1560,7 +1592,12 @@ export default function App() {
         <div className="drawer-content">
           <div className="lab-form">
             <div className="lab-form-section">
-              <h3 className="lab-form-title">新建电台</h3>
+              <h3 className="lab-form-title">{editingCustomId ? "编辑电台" : "新建电台"}</h3>
+              {editingCustomId && (
+                <div className="lab-editing-hint">
+                  正在编辑「{customStations.find((c) => c.id === editingCustomId)?.name}」，原有的发现记录、收藏、笔记和录音带关联都会保留。
+                </div>
+              )}
 
               <div className="lab-field">
                 <label className="lab-label">电台名称</label>
@@ -1648,13 +1685,23 @@ export default function App() {
                 <span className="lab-char-count">{labMessage.length}/200</span>
               </div>
 
-              <button
-                className="lab-add-btn"
-                onClick={addCustomStation}
-                disabled={!canAddStation}
-              >
-                加入调频系统
-              </button>
+              <div className="lab-form-actions">
+                {editingCustomId && (
+                  <button
+                    className="lab-cancel-btn"
+                    onClick={cancelEditCustomStation}
+                  >
+                    取消编辑
+                  </button>
+                )}
+                <button
+                  className="lab-add-btn"
+                  onClick={saveCustomStation}
+                  disabled={!canSaveStation}
+                >
+                  {editingCustomId ? "保存修改" : "加入调频系统"}
+                </button>
+              </div>
             </div>
 
             {customStations.length > 0 && (
@@ -1664,8 +1711,9 @@ export default function App() {
                   {customStations.map((cs) => {
                     const found = save.discovered.includes(cs.id);
                     const isFav = save.favorites.includes(cs.id);
+                    const isEditing = editingCustomId === cs.id;
                     return (
-                      <article key={cs.id} className="lab-existing-item">
+                      <article key={cs.id} className={`lab-existing-item ${isEditing ? "editing" : ""}`}>
                         <span className="lab-existing-freq" style={{ background: cs.color }}>
                           {cs.frequency.toFixed(1)}
                         </span>
@@ -1676,15 +1724,25 @@ export default function App() {
                             {found && <span className="lab-badge lab-badge-found">已发现</span>}
                             {!found && <span className="lab-badge lab-badge-unfound">未发现</span>}
                             {isFav && <span className="lab-badge lab-badge-fav">已收藏</span>}
+                            {isEditing && <span className="lab-badge lab-badge-editing">编辑中</span>}
                           </div>
                         </div>
-                        <button
-                          className="lab-delete-btn"
-                          onClick={() => deleteCustomStation(cs.id)}
-                          title="删除此电台"
-                        >
-                          ✕
-                        </button>
+                        <div className="lab-item-actions">
+                          <button
+                            className="lab-edit-btn"
+                            onClick={() => startEditCustomStation(cs.id)}
+                            title="编辑此电台"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            className="lab-delete-btn"
+                            onClick={() => deleteCustomStation(cs.id)}
+                            title="删除此电台"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </article>
                     );
                   })}

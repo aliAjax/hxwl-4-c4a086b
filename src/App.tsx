@@ -843,6 +843,165 @@ export default function App() {
     achievementSave.unlocked
   ]);
 
+  const archiveOverview = useMemo(() => {
+    const undiscoveredBaseStations = stations.filter(
+      (s) => !save.discovered.includes(s.id)
+    );
+    const nextUndiscoveredStation = undiscoveredBaseStations[0] || null;
+
+    const unlockedChapters = storyChapters.filter((ch) =>
+      storylineSave.unlockedChapters.includes(ch.id)
+    );
+    const chaptersWithUnread = unlockedChapters.filter(
+      (ch) => !ch.fragments.every((f) => storylineSave.readFragments.includes(f.id))
+    );
+    let nextStoryChapter: StoryChapter | null = null;
+    let nextStoryFragment: StoryFragment | null = null;
+    if (chaptersWithUnread.length > 0) {
+      chaptersWithUnread.sort(
+        (a, b) =>
+          (storylineSave.unlockedAt[b.id] || 0) - (storylineSave.unlockedAt[a.id] || 0)
+      );
+      nextStoryChapter = chaptersWithUnread[0];
+      nextStoryFragment =
+        nextStoryChapter.fragments.find(
+          (f) => !storylineSave.readFragments.includes(f.id)
+        ) || null;
+    }
+
+    const nextMissedBroadcast =
+      missedBroadcasts.length > 0
+        ? dailyBroadcasts.find((b) => b.id === missedBroadcasts[0]) || null
+        : null;
+
+    const nextUnsolvedPuzzle = unsolvedPuzzles[0] || null;
+
+    const visibleAchievements = getVisibleAchievements(achievementSave.unlocked);
+    const nextLockedAchievement =
+      visibleAchievements.find((a) => !achievementSave.unlocked.includes(a.id)) ||
+      null;
+
+    return {
+      baseStations: {
+        discovered: stats.baseDiscovered,
+        total: stats.baseTotal,
+        nextStation: nextUndiscoveredStation
+          ? { id: nextUndiscoveredStation.id, name: nextUndiscoveredStation.name, frequency: nextUndiscoveredStation.frequency }
+          : null
+      },
+      customStations: {
+        count: customStations.length
+      },
+      favorites: {
+        count: stats.favoriteCount,
+        total: stats.favoriteTotal
+      },
+      story: {
+        read: stats.storyRead,
+        total: stats.storyTotal,
+        nextChapter: nextStoryChapter
+          ? { id: nextStoryChapter.id, title: nextStoryChapter.title, color: nextStoryChapter.color }
+          : null,
+        nextFragment: nextStoryFragment
+          ? { id: nextStoryFragment.id, title: nextStoryFragment.title }
+          : null
+      },
+      daily: {
+        catchUpCount: stats.catchUpCount,
+        catchUpTotal: stats.catchUpTotal,
+        missedCount: missedBroadcasts.length,
+        nextMissed: nextMissedBroadcast
+          ? { id: nextMissedBroadcast.id, title: nextMissedBroadcast.title, color: nextMissedBroadcast.color }
+          : null
+      },
+      tapes: {
+        count: stats.tapeCount,
+        anomalyCount: stats.anomalyTapeCount
+      },
+      puzzles: {
+        solved: stats.puzzleSolved,
+        total: stats.puzzleTotal,
+        unsolvedCount: unsolvedPuzzles.length,
+        nextUnsolved: nextUnsolvedPuzzle
+          ? { id: nextUnsolvedPuzzle.id, title: nextUnsolvedPuzzle.title, color: nextUnsolvedPuzzle.color }
+          : null
+      },
+      achievements: {
+        unlocked: stats.achievementUnlocked,
+        total: stats.achievementTotal,
+        nextLocked: nextLockedAchievement
+          ? { id: nextLockedAchievement.id, title: nextLockedAchievement.title, hint: getAchievementUnlockHint(nextLockedAchievement, achievementContext) }
+          : null
+      }
+    };
+  }, [
+    stats,
+    save.discovered,
+    customStations.length,
+    storylineSave,
+    missedBroadcasts,
+    unsolvedPuzzles,
+    achievementSave.unlocked,
+    achievementContext
+  ]);
+
+  function openArchiveAndJump(target: string) {
+    setStatsOpen(false);
+    setTimeout(() => {
+      switch (target) {
+        case "archive":
+          setExpandedArchive(null);
+          break;
+        case "favorites":
+          setDrawerOpen(true);
+          break;
+        case "lab":
+          setLabOpen(true);
+          break;
+        case "story":
+          setStorylineOpen(true);
+          if (archiveOverview.story.nextChapter) {
+            setActiveChapterId(archiveOverview.story.nextChapter.id);
+            if (archiveOverview.story.nextFragment) {
+              setActiveFragmentId(archiveOverview.story.nextFragment.id);
+              setStorylineSave((current) => {
+                if (current.readFragments.includes(archiveOverview.story.nextFragment!.id)) {
+                  return {
+                    ...current,
+                    lastReadAt: { ...current.lastReadAt, [archiveOverview.story.nextFragment!.id]: Date.now() }
+                  };
+                }
+                return {
+                  ...current,
+                  readFragments: [...current.readFragments, archiveOverview.story.nextFragment!.id],
+                  lastReadAt: { ...current.lastReadAt, [archiveOverview.story.nextFragment!.id]: Date.now() }
+                };
+              });
+            }
+          }
+          break;
+        case "daily":
+          setDailyOpen(true);
+          if (archiveOverview.daily.nextMissed) {
+            setActiveDailyId(archiveOverview.daily.nextMissed.id);
+          }
+          break;
+        case "tapes":
+          openSignalTape();
+          break;
+        case "puzzles":
+          openPuzzleDrawer();
+          if (archiveOverview.puzzles.nextUnsolved) {
+            openPuzzle(archiveOverview.puzzles.nextUnsolved.id);
+          }
+          break;
+        case "achievements":
+          setAchievementOpen(true);
+          break;
+      }
+    }, 200);
+  }
+
   useEffect(() => {
     const newly = checkNewlyUnlocked(achievementSave, achievementContext);
     if (newly.length > 0) {
@@ -3569,12 +3728,12 @@ export default function App() {
       </aside>
 
       <div className={`drawer-overlay ${statsOpen ? "open" : ""}`} onClick={() => setStatsOpen(false)} />
-      <aside className={`stats-drawer ${statsOpen ? "open" : ""}`}>
+      <aside className={`archive-drawer ${statsOpen ? "open" : ""}`}>
         <header className="drawer-header">
           <div>
-            <h2>调频统计</h2>
+            <h2>档案总览</h2>
             <p className="drawer-subtitle">
-              记录你在频段缝隙中的探索进度
+              浏览你在频段缝隙中的全部探索记录
             </p>
           </div>
           <button className="drawer-close" onClick={() => setStatsOpen(false)}>
@@ -3583,166 +3742,287 @@ export default function App() {
         </header>
 
         <div className="drawer-content">
-          <div className="stats-overview">
-            <div className="stats-overview-icon">📡</div>
-            <div className="stats-overview-info">
-              <p className="stats-overview-label">探索进度概览</p>
-              <p className="stats-overview-desc">
-                已发现 {stats.baseDiscovered}/{stats.baseTotal} 个基础电台 · 解锁 {stats.achievementUnlocked}/{stats.achievementTotal} 项成就
+          <div className="archive-overview-card">
+            <div className="archive-overview-icon">📚</div>
+            <div className="archive-overview-info">
+              <p className="archive-overview-label">探索档案</p>
+              <p className="archive-overview-desc">
+                已发现 {archiveOverview.baseStations.discovered}/{archiveOverview.baseStations.total} 个基础电台 · 解锁 {archiveOverview.achievements.unlocked}/{archiveOverview.achievements.total} 项成就
               </p>
             </div>
           </div>
 
-          <div className="stats-section">
-            <h3 className="stats-section-title">📻 电台探索</h3>
-            <div className="stats-grid">
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#61a5c2" }}>🔭</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">基础电台发现数</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.baseDiscovered}</span>
-                    <span className="stats-card-separator">/</span>
-                    <span className="stats-card-total">{stats.baseTotal}</span>
-                  </p>
-                  <div className="stats-card-progress">
-                    <i style={{ width: `${(stats.baseDiscovered / Math.max(stats.baseTotal, 1)) * 100}%`, background: "#61a5c2" }} />
-                  </div>
+          <div className="archive-section">
+            <h3 className="archive-section-title">📻 电台档案</h3>
+            
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("archive")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#61a5c2" }}>🔭</div>
+                <div className="archive-item-info">
+                  <strong>基础电台</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.baseStations.discovered} / {archiveOverview.baseStations.total}
+                  </span>
                 </div>
-              </article>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              <div className="archive-item-progress-bar">
+                <i style={{ 
+                  width: `${(archiveOverview.baseStations.discovered / Math.max(archiveOverview.baseStations.total, 1)) * 100}%`,
+                  background: "#61a5c2" 
+                }} />
+              </div>
+              <div className="archive-item-next">
+                {archiveOverview.baseStations.nextStation ? (
+                  <span className="archive-next-tag">
+                    <span className="archive-next-icon">📍</span>
+                    下一站：{archiveOverview.baseStations.nextStation.name} ({archiveOverview.baseStations.nextStation.frequency.toFixed(1)} MHz)
+                  </span>
+                ) : (
+                  <span className="archive-next-tag completed">
+                    <span className="archive-next-icon">✓</span>
+                    全部发现完成
+                  </span>
+                )}
+              </div>
+            </article>
 
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#e8c36a" }}>⭐</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">收藏数</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.favoriteCount}</span>
-                    {stats.favoriteTotal > 0 && (
-                      <>
-                        <span className="stats-card-separator">/</span>
-                        <span className="stats-card-total">{stats.favoriteTotal}</span>
-                      </>
-                    )}
-                  </p>
-                  {stats.favoriteTotal > 0 && (
-                    <div className="stats-card-progress">
-                      <i style={{ width: `${(stats.favoriteCount / Math.max(stats.favoriteTotal, 1)) * 100}%`, background: "#e8c36a" }} />
-                    </div>
-                  )}
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("lab")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#8a8cc2" }}>⚗️</div>
+                <div className="archive-item-info">
+                  <strong>自定义电台</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.customStations.count} 个
+                  </span>
                 </div>
-              </article>
-            </div>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              <div className="archive-item-next">
+                <span className="archive-next-tag hint">
+                  <span className="archive-next-icon">💡</span>
+                  在实验室创建你的私人电台
+                </span>
+              </div>
+            </article>
+
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("favorites")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#e8c36a" }}>★</div>
+                <div className="archive-item-info">
+                  <strong>收藏电台</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.favorites.count}{archiveOverview.favorites.total > 0 ? ` / ${archiveOverview.favorites.total}` : ""}
+                  </span>
+                </div>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              {archiveOverview.favorites.total > 0 && (
+                <div className="archive-item-progress-bar">
+                  <i style={{ 
+                    width: `${(archiveOverview.favorites.count / Math.max(archiveOverview.favorites.total, 1)) * 100}%`,
+                    background: "#e8c36a" 
+                  }} />
+                </div>
+              )}
+              <div className="archive-item-next">
+                <span className="archive-next-tag hint">
+                  <span className="archive-next-icon">⭐</span>
+                  点击查看收藏的电台列表
+                </span>
+              </div>
+            </article>
           </div>
 
-          <div className="stats-section">
-            <h3 className="stats-section-title">📖 故事阅读</h3>
-            <div className="stats-grid">
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#a06cd5" }}>📚</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">故事片段阅读数</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.storyRead}</span>
-                    <span className="stats-card-separator">/</span>
-                    <span className="stats-card-total">{stats.storyTotal}</span>
-                  </p>
-                  <div className="stats-card-progress">
-                    <i style={{ width: `${(stats.storyRead / Math.max(stats.storyTotal, 1)) * 100}%`, background: "#a06cd5" }} />
-                  </div>
+          <div className="archive-section">
+            <h3 className="archive-section-title">📖 故事与广播</h3>
+            
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("story")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#a06cd5" }}>📖</div>
+                <div className="archive-item-info">
+                  <strong>故事阅读</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.story.read} / {archiveOverview.story.total}
+                  </span>
                 </div>
-              </article>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              <div className="archive-item-progress-bar">
+                <i style={{ 
+                  width: `${(archiveOverview.story.read / Math.max(archiveOverview.story.total, 1)) * 100}%`,
+                  background: "#a06cd5" 
+                }} />
+              </div>
+              <div className="archive-item-next">
+                {archiveOverview.story.nextChapter && archiveOverview.story.nextFragment ? (
+                  <span className="archive-next-tag">
+                    <span className="archive-next-icon">📖</span>
+                    继续阅读：{archiveOverview.story.nextChapter.title} · {archiveOverview.story.nextFragment.title}
+                  </span>
+                ) : (
+                  <span className="archive-next-tag completed">
+                    <span className="archive-next-icon">✓</span>
+                    所有故事都已读完
+                  </span>
+                )}
+              </div>
+            </article>
 
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#e89b6a" }}>⏰</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">每日广播补听数</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.catchUpCount}</span>
-                    {stats.catchUpTotal > 0 && (
-                      <>
-                        <span className="stats-card-separator">/</span>
-                        <span className="stats-card-total">{stats.catchUpTotal}</span>
-                      </>
-                    )}
-                  </p>
-                  {stats.catchUpTotal > 0 && (
-                    <div className="stats-card-progress">
-                      <i style={{ width: `${(stats.catchUpCount / Math.max(stats.catchUpTotal, 1)) * 100}%`, background: "#e89b6a" }} />
-                    </div>
-                  )}
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("daily")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#e89b6a" }}>📡</div>
+                <div className="archive-item-info">
+                  <strong>每日广播补听</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.daily.missedCount} 期可补听
+                  </span>
                 </div>
-              </article>
-            </div>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              {archiveOverview.daily.catchUpTotal > 0 && (
+                <div className="archive-item-progress-bar">
+                  <i style={{ 
+                    width: `${(archiveOverview.daily.catchUpCount / Math.max(archiveOverview.daily.catchUpTotal, 1)) * 100}%`,
+                    background: "#e89b6a" 
+                  }} />
+                </div>
+              )}
+              <div className="archive-item-next">
+                {archiveOverview.daily.nextMissed ? (
+                  <span className="archive-next-tag">
+                    <span className="archive-next-icon">⏰</span>
+                    可补听：{archiveOverview.daily.nextMissed.title}
+                  </span>
+                ) : (
+                  <span className="archive-next-tag completed">
+                    <span className="archive-next-icon">✓</span>
+                    所有广播都已收听
+                  </span>
+                )}
+              </div>
+            </article>
           </div>
 
-          <div className="stats-section">
-            <h3 className="stats-section-title">📼 录音带收藏</h3>
-            <div className="stats-grid">
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#c2826a" }}>📼</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">录音带数量</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.tapeCount}</span>
-                  </p>
+          <div className="archive-section">
+            <h3 className="archive-section-title">📼 录音与谜题</h3>
+            
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("tapes")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#c2826a" }}>📼</div>
+                <div className="archive-item-info">
+                  <strong>信号录音带</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.tapes.count} 盘
+                  </span>
                 </div>
-              </article>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              <div className="archive-item-next">
+                <span className="archive-next-tag hint">
+                  <span className="archive-next-icon">⚠️</span>
+                  其中 {archiveOverview.tapes.anomalyCount} 盘是异常广播
+                </span>
+              </div>
+            </article>
 
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#d46a6a" }}>⚠️</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">异常录音带数量</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.anomalyTapeCount}</span>
-                  </p>
-                  {stats.tapeCount > 0 && (
-                    <div className="stats-card-progress">
-                      <i style={{ width: `${(stats.anomalyTapeCount / Math.max(stats.tapeCount, 1)) * 100}%`, background: "#d46a6a" }} />
-                    </div>
-                  )}
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("puzzles")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#5aa86a" }}>🧩</div>
+                <div className="archive-item-info">
+                  <strong>信号谜题</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.puzzles.solved} / {archiveOverview.puzzles.total}
+                  </span>
                 </div>
-              </article>
-            </div>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              <div className="archive-item-progress-bar">
+                <i style={{ 
+                  width: `${(archiveOverview.puzzles.solved / Math.max(archiveOverview.puzzles.total, 1)) * 100}%`,
+                  background: "#5aa86a" 
+                }} />
+              </div>
+              <div className="archive-item-next">
+                {archiveOverview.puzzles.nextUnsolved ? (
+                  <span className="archive-next-tag">
+                    <span className="archive-next-icon">🧩</span>
+                    待解开：{archiveOverview.puzzles.nextUnsolved.title}
+                  </span>
+                ) : (
+                  <span className="archive-next-tag completed">
+                    <span className="archive-next-icon">✓</span>
+                    所有谜题都已解开
+                  </span>
+                )}
+              </div>
+            </article>
           </div>
 
-          <div className="stats-section">
-            <h3 className="stats-section-title">🏆 成就与谜题</h3>
-            <div className="stats-grid">
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#5aa86a" }}>🧩</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">谜题完成数</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.puzzleSolved}</span>
-                    <span className="stats-card-separator">/</span>
-                    <span className="stats-card-total">{stats.puzzleTotal}</span>
-                  </p>
-                  <div className="stats-card-progress">
-                    <i style={{ width: `${(stats.puzzleSolved / Math.max(stats.puzzleTotal, 1)) * 100}%`, background: "#5aa86a" }} />
-                  </div>
+          <div className="archive-section">
+            <h3 className="archive-section-title">🏆 成就进度</h3>
+            
+            <article 
+              className="archive-item-card clickable"
+              onClick={() => openArchiveAndJump("achievements")}
+            >
+              <div className="archive-item-header">
+                <div className="archive-item-icon" style={{ background: "#ffd700" }}>🏆</div>
+                <div className="archive-item-info">
+                  <strong>调频成就</strong>
+                  <span className="archive-item-progress">
+                    {archiveOverview.achievements.unlocked} / {archiveOverview.achievements.total}
+                  </span>
                 </div>
-              </article>
-
-              <article className="stats-card">
-                <div className="stats-card-icon" style={{ background: "#ffd700" }}>🏆</div>
-                <div className="stats-card-info">
-                  <p className="stats-card-label">成就解锁数</p>
-                  <p className="stats-card-value">
-                    <span className="stats-card-current">{stats.achievementUnlocked}</span>
-                    <span className="stats-card-separator">/</span>
-                    <span className="stats-card-total">{stats.achievementTotal}</span>
-                  </p>
-                  <div className="stats-card-progress">
-                    <i style={{ width: `${(stats.achievementUnlocked / Math.max(stats.achievementTotal, 1)) * 100}%`, background: "#ffd700" }} />
-                  </div>
-                </div>
-              </article>
-            </div>
+                <span className="archive-item-arrow">▶</span>
+              </div>
+              <div className="archive-item-progress-bar">
+                <i style={{ 
+                  width: `${(archiveOverview.achievements.unlocked / Math.max(archiveOverview.achievements.total, 1)) * 100}%`,
+                  background: "#ffd700" 
+                }} />
+              </div>
+              <div className="archive-item-next">
+                {archiveOverview.achievements.nextLocked ? (
+                  <span className="archive-next-tag">
+                    <span className="archive-next-icon">🔒</span>
+                    下一个：{archiveOverview.achievements.nextLocked.title}
+                    <span className="archive-next-hint">— {archiveOverview.achievements.nextLocked.hint}</span>
+                  </span>
+                ) : (
+                  <span className="archive-next-tag completed">
+                    <span className="archive-next-icon">✓</span>
+                    所有成就都已解锁
+                  </span>
+                )}
+              </div>
+            </article>
           </div>
 
-          <div className="stats-footer">
-            <p className="stats-footer-text">
-              ✦ 数据来源于你的探索记录，所有进度自动同步 ✦
+          <div className="archive-footer">
+            <p className="archive-footer-text">
+              ✦ 点击任意卡片可跳转到对应详情 ✦
             </p>
           </div>
         </div>

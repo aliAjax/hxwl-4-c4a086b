@@ -2528,6 +2528,104 @@ input[type="range"] {
   transform: translateX(0);
 }
 
+.tape-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(232, 195, 106, 0.12);
+}
+
+.tape-search-wrap {
+  width: 100%;
+}
+
+.tape-search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 195, 106, 0.25);
+  background: rgba(18, 26, 28, 0.9);
+  color: #d5ded8;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+
+.tape-search-input:focus {
+  border-color: rgba(232, 195, 106, 0.5);
+}
+
+.tape-search-input::placeholder {
+  color: #5a6b6d;
+}
+
+.tape-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tape-type-filter {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tape-filter-btn {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #aebabb;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.tape-filter-btn:hover {
+  color: #d5ded8;
+}
+
+.tape-filter-btn.active {
+  background: rgba(232, 195, 106, 0.2);
+  color: #e8c36a;
+}
+
+.tape-filter-btn.anomaly.active {
+  background: rgba(212, 106, 106, 0.2);
+  color: #ff9090;
+}
+
+.tape-station-select {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 195, 106, 0.25);
+  background: rgba(18, 26, 28, 0.9);
+  color: #d5ded8;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+
+.tape-station-select:focus {
+  border-color: rgba(232, 195, 106, 0.5);
+}
+
+.tape-station-select option {
+  background: #101718;
+  color: #d5ded8;
+}
+
 .tape-list {
   display: flex;
   flex-direction: column;
@@ -2795,6 +2893,24 @@ input[type="range"] {
   .tape-toast {
   width: calc(100% - 32px);
   max-width: 360px;
+  }
+
+  .tape-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tape-type-filter {
+    justify-content: center;
+  }
+
+  .tape-filter-btn {
+    padding: 6px 12px;
+    font-size: 0.82rem;
+  }
+
+  .tape-station-select {
+    width: 100%;
   }
 }
 

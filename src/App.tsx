@@ -362,6 +362,9 @@ export default function App() {
   const [signalTapeOpen, setSignalTapeOpen] = useState(false);
   const [activeTapeId, setActiveTapeId] = useState<string | null>(null);
   const [tapeSavedToast, setTapeSavedToast] = useState(false);
+  const [tapeSearchQuery, setTapeSearchQuery] = useState("");
+  const [tapeFilterType, setTapeFilterType] = useState<"all" | "anomaly" | "normal">("all");
+  const [tapeFilterStation, setTapeFilterStation] = useState<string>("all");
 
   const [achievementSave, setAchievementSave] = useState<AchievementSave>(loadAchievementSave);
   const [achievementOpen, setAchievementOpen] = useState(false);
@@ -568,6 +571,9 @@ export default function App() {
   function openSignalTape() {
     setSignalTapeOpen(true);
     setActiveTapeId(null);
+    setTapeSearchQuery("");
+    setTapeFilterType("all");
+    setTapeFilterStation("all");
   }
 
   function closeSignalTape() {
@@ -586,6 +592,42 @@ export default function App() {
     () => signalTapeSave.tapes.find((t) => t.id === activeTapeId) || null,
     [signalTapeSave.tapes, activeTapeId]
   );
+
+  const tapeStations = useMemo(() => {
+    const stationMap = new Map<string, { id: string; name: string }>();
+    for (const tape of signalTapeSave.tapes) {
+      if (!stationMap.has(tape.stationId)) {
+        stationMap.set(tape.stationId, { id: tape.stationId, name: tape.stationName });
+      }
+    }
+    return Array.from(stationMap.values()).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  }, [signalTapeSave.tapes]);
+
+  const filteredTapes = useMemo(() => {
+    let result = signalTapeSave.tapes;
+
+    if (tapeFilterStation !== "all") {
+      result = result.filter((t) => t.stationId === tapeFilterStation);
+    }
+
+    if (tapeFilterType === "anomaly") {
+      result = result.filter((t) => t.isAnomaly);
+    } else if (tapeFilterType === "normal") {
+      result = result.filter((t) => !t.isAnomaly);
+    }
+
+    if (tapeSearchQuery.trim()) {
+      const query = tapeSearchQuery.trim().toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.content.toLowerCase().includes(query) ||
+          (t.scheduleName && t.scheduleName.toLowerCase().includes(query)) ||
+          t.stationName.toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }, [signalTapeSave.tapes, tapeFilterStation, tapeFilterType, tapeSearchQuery]);
 
   const missedBroadcasts = useMemo(
     () => calculateMissedBroadcasts(dailySave, now, save.discovered, save.favorites.length),
@@ -2137,7 +2179,7 @@ export default function App() {
             <p className="drawer-subtitle">
               {activeTape
                 ? `来自 ${activeTape.stationName}`
-                : `共 ${signalTapeSave.tapes.length} 段录音`}
+                : `共 ${filteredTapes.length} / ${signalTapeSave.tapes.length} 段录音`}
             </p>
           </div>
           <button className="drawer-close" onClick={closeSignalTape}>
@@ -2147,61 +2189,121 @@ export default function App() {
 
         <div className="drawer-content">
           {!activeTape && (
-            <div className="tape-list">
-              {signalTapeSave.tapes.length === 0 ? (
-                <div className="drawer-empty">
-                  <div className="drawer-empty-icon">📼</div>
-                  <p>还没有录音带</p>
-                  <p className="drawer-empty-hint">
-                    调到电台后点击「录制这段」保存当前播报
-                  </p>
+            <>
+              <div className="tape-filter-bar">
+                <div className="tape-search-wrap">
+                  <input
+                    type="text"
+                    className="tape-search-input"
+                    placeholder="搜索内容、节目或电台…"
+                    value={tapeSearchQuery}
+                    onChange={(e) => setTapeSearchQuery(e.target.value)}
+                  />
                 </div>
-              ) : (
-                signalTapeSave.tapes.map((tape) => (
-                  <article
-                    key={tape.id}
-                    className="tape-card"
-                    onClick={() => openTapeDetail(tape.id)}
-                  >
-                    <span
-                      className="tape-freq"
-                      style={{ background: tape.color }}
-                    >
-                      {tape.frequency.toFixed(1)}
-                    </span>
-                    <div className="tape-info">
-                      <strong>
-                        {tape.stationName}
-                        {tape.isAnomaly && (
-                          <em className="anomaly-tag-inline">⚠ 异常</em>
-                        )}
-                      </strong>
-                      {tape.scheduleName && (
-                        <p className="tape-schedule">
-                          ▸ {tape.scheduleName}
-                        </p>
-                      )}
-                      <p className="tape-preview">
-                        {tape.content.length > 50
-                          ? tape.content.slice(0, 50) + "…"
-                          : tape.content}
-                      </p>
-                      <p className="tape-time">{formatTapeTime(tape.savedAt)}</p>
-                    </div>
+
+                <div className="tape-filter-row">
+                  <div className="tape-type-filter">
                     <button
-                      className="tape-delete-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteTape(tape.id);
-                      }}
-                      title="删除此录音带"
+                      className={`tape-filter-btn ${tapeFilterType === "all" ? "active" : ""}`}
+                      onClick={() => setTapeFilterType("all")}
                     >
-                      ✕
+                      全部
                     </button>
-                  </article>
-                ))
-              )}
-            </div>
+                    <button
+                      className={`tape-filter-btn anomaly ${tapeFilterType === "anomaly" ? "active" : ""}`}
+                      onClick={() => setTapeFilterType("anomaly")}
+                    >
+                      ⚠ 异常
+                    </button>
+                    <button
+                      className={`tape-filter-btn ${tapeFilterType === "normal" ? "active" : ""}`}
+                      onClick={() => setTapeFilterType("normal")}
+                    >
+                      普通
+                    </button>
+                  </div>
+
+                  {tapeStations.length > 0 && (
+                    <select
+                      className="tape-station-select"
+                      value={tapeFilterStation}
+                      onChange={(e) => setTapeFilterStation(e.target.value)}
+                    >
+                      <option value="all">全部电台</option>
+                      {tapeStations.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div className="tape-list">
+                {signalTapeSave.tapes.length === 0 ? (
+                  <div className="drawer-empty">
+                    <div className="drawer-empty-icon">📼</div>
+                    <p>还没有录音带</p>
+                    <p className="drawer-empty-hint">
+                      调到电台后点击「录制这段」保存当前播报
+                    </p>
+                  </div>
+                ) : filteredTapes.length === 0 ? (
+                  <div className="drawer-empty">
+                    <div className="drawer-empty-icon">🔍</div>
+                    <p>没有匹配的录音带</p>
+                    <p className="drawer-empty-hint">
+                      尝试调整筛选条件或搜索关键词
+                    </p>
+                  </div>
+                ) : (
+                  filteredTapes.map((tape) => (
+                    <article
+                      key={tape.id}
+                      className="tape-card"
+                      onClick={() => openTapeDetail(tape.id)}
+                    >
+                      <span
+                        className="tape-freq"
+                        style={{ background: tape.color }}
+                      >
+                        {tape.frequency.toFixed(1)}
+                      </span>
+                      <div className="tape-info">
+                        <strong>
+                          {tape.stationName}
+                          {tape.isAnomaly && (
+                            <em className="anomaly-tag-inline">⚠ 异常</em>
+                          )}
+                        </strong>
+                        {tape.scheduleName && (
+                          <p className="tape-schedule">
+                            ▸ {tape.scheduleName}
+                          </p>
+                        )}
+                        <p className="tape-preview">
+                          {tape.content.length > 50
+                            ? tape.content.slice(0, 50) + "…"
+                            : tape.content}
+                        </p>
+                        <p className="tape-time">{formatTapeTime(tape.savedAt)}</p>
+                      </div>
+                      <button
+                        className="tape-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTape(tape.id);
+                        }}
+                        title="删除此录音带"
+                      >
+                        ✕
+                      </button>
+                    </article>
+                  ))
+                )}
+              </div>
+            </>
           )}
 
           {activeTape && (

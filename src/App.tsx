@@ -858,6 +858,7 @@ export default function App() {
     );
     let nextStoryChapter: StoryChapter | null = null;
     let nextStoryFragment: StoryFragment | null = null;
+    let nextLockedStoryChapter: StoryChapter | null = null;
     if (chaptersWithUnread.length > 0) {
       chaptersWithUnread.sort(
         (a, b) => storyChapters.indexOf(a) - storyChapters.indexOf(b)
@@ -867,6 +868,10 @@ export default function App() {
         nextStoryChapter.fragments.find(
           (f) => !storylineSave.readFragments.includes(f.id)
         ) || null;
+    } else if (stats.storyRead < stats.storyTotal) {
+      nextLockedStoryChapter =
+        storyChapters.find((ch) => !storylineSave.unlockedChapters.includes(ch.id)) ||
+        null;
     }
 
     const nextMissedBroadcast =
@@ -904,6 +909,13 @@ export default function App() {
           : null,
         nextFragment: nextStoryFragment
           ? { id: nextStoryFragment.id, title: nextStoryFragment.title }
+          : null,
+        nextLockedChapter: nextLockedStoryChapter
+          ? {
+              id: nextLockedStoryChapter.id,
+              title: nextLockedStoryChapter.title,
+              hint: getChapterUnlockHint(nextLockedStoryChapter)
+            }
           : null
       },
       daily: {
@@ -982,7 +994,9 @@ export default function App() {
           break;
         case "daily":
           setDailyOpen(true);
+          setActiveDailyFragmentId(null);
           if (archiveOverview.daily.nextMissed) {
+            handleCatchUp(archiveOverview.daily.nextMissed.id);
             setActiveDailyId(archiveOverview.daily.nextMissed.id);
           }
           break;
@@ -3871,6 +3885,12 @@ export default function App() {
                   <span className="archive-next-tag">
                     <span className="archive-next-icon">📖</span>
                     继续阅读：{archiveOverview.story.nextChapter.title} · {archiveOverview.story.nextFragment.title}
+                  </span>
+                ) : archiveOverview.story.nextLockedChapter ? (
+                  <span className="archive-next-tag hint">
+                    <span className="archive-next-icon">🔒</span>
+                    待解锁：{archiveOverview.story.nextLockedChapter.title}
+                    <span className="archive-next-hint">— {archiveOverview.story.nextLockedChapter.hint}</span>
                   </span>
                 ) : (
                   <span className="archive-next-tag completed">

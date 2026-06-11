@@ -837,6 +837,7 @@ export default function App() {
     storylineSave.readFragments,
     allStoryFragmentIds,
     dailySave.catchUpCompleted,
+    dailySave.discoveredBroadcasts,
     missedBroadcasts.length,
     signalTapeSave.tapes,
     puzzleSave.solvedPuzzles,
@@ -859,8 +860,7 @@ export default function App() {
     let nextStoryFragment: StoryFragment | null = null;
     if (chaptersWithUnread.length > 0) {
       chaptersWithUnread.sort(
-        (a, b) =>
-          (storylineSave.unlockedAt[b.id] || 0) - (storylineSave.unlockedAt[a.id] || 0)
+        (a, b) => storyChapters.indexOf(a) - storyChapters.indexOf(b)
       );
       nextStoryChapter = chaptersWithUnread[0];
       nextStoryFragment =

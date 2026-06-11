@@ -390,6 +390,8 @@ export default function App() {
   const [puzzleError, setPuzzleError] = useState<string | null>(null);
   const [newPuzzleToast, setNewPuzzleToast] = useState<SignalPuzzle | null>(null);
 
+  const [statsOpen, setStatsOpen] = useState(false);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
@@ -749,6 +751,59 @@ export default function App() {
   }, [activePuzzle, activePuzzleAttemptCount]);
 
   const unsolvedCount = unsolvedPuzzles.length;
+
+  const BASE_STATION_IDS = ["rain", "salt", "train", "green"];
+
+  const stats = useMemo(() => {
+    const baseDiscovered = save.discovered.filter((id) => BASE_STATION_IDS.includes(id)).length;
+    const baseTotal = BASE_STATION_IDS.length;
+
+    const favoriteCount = save.favorites.length;
+    const favoriteTotal = allStations.length;
+
+    const storyRead = storylineSave.readFragments.length;
+    const storyTotal = allStoryFragmentIds.length;
+
+    const catchUpCount = dailySave.catchUpCompleted.length;
+    const catchUpTotal = dailySave.catchUpCompleted.length + missedBroadcasts.length;
+
+    const tapeCount = signalTapeSave.tapes.length;
+    const anomalyTapeCount = signalTapeSave.tapes.filter((t) => t.isAnomaly).length;
+
+    const puzzleSolved = getSolvedVisibleCount(puzzleSave.solvedPuzzles);
+    const puzzleTotal = getTotalPuzzleCount(puzzleSave.solvedPuzzles);
+
+    const achievementUnlocked = getUnlockedVisibleCount(achievementSave.unlocked);
+    const achievementTotal = getTotalAchievementCount(achievementSave.unlocked);
+
+    return {
+      baseDiscovered,
+      baseTotal,
+      favoriteCount,
+      favoriteTotal,
+      storyRead,
+      storyTotal,
+      catchUpCount,
+      catchUpTotal,
+      tapeCount,
+      anomalyTapeCount,
+      puzzleSolved,
+      puzzleTotal,
+      achievementUnlocked,
+      achievementTotal
+    };
+  }, [
+    save.discovered,
+    save.favorites,
+    allStations.length,
+    storylineSave.readFragments,
+    allStoryFragmentIds,
+    dailySave.catchUpCompleted,
+    missedBroadcasts.length,
+    signalTapeSave.tapes,
+    puzzleSave.solvedPuzzles,
+    achievementSave.unlocked
+  ]);
 
   useEffect(() => {
     const newly = checkNewlyUnlocked(achievementSave, achievementContext);
@@ -1378,6 +1433,10 @@ export default function App() {
               <span className="puzzle-trigger-icon">🧩</span>
               <span>信号谜题</span>
               {unsolvedCount > 0 && <span className="puzzle-count">{unsolvedCount}</span>}
+            </button>
+            <button className="stats-trigger" onClick={() => setStatsOpen(true)}>
+              <span className="stats-trigger-icon">📊</span>
+              <span>调频统计</span>
             </button>
           </div>
         </div>
@@ -2993,6 +3052,186 @@ export default function App() {
               </p>
             </div>
           )}
+        </div>
+      </aside>
+
+      <div className={`drawer-overlay ${statsOpen ? "open" : ""}`} onClick={() => setStatsOpen(false)} />
+      <aside className={`stats-drawer ${statsOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>调频统计</h2>
+            <p className="drawer-subtitle">
+              记录你在频段缝隙中的探索进度
+            </p>
+          </div>
+          <button className="drawer-close" onClick={() => setStatsOpen(false)}>
+            ✕
+          </button>
+        </header>
+
+        <div className="drawer-content">
+          <div className="stats-overview">
+            <div className="stats-overview-icon">📡</div>
+            <div className="stats-overview-info">
+              <p className="stats-overview-label">探索进度概览</p>
+              <p className="stats-overview-desc">
+                已发现 {stats.baseDiscovered}/{stats.baseTotal} 个基础电台 · 解锁 {stats.achievementUnlocked}/{stats.achievementTotal} 项成就
+              </p>
+            </div>
+          </div>
+
+          <div className="stats-section">
+            <h3 className="stats-section-title">📻 电台探索</h3>
+            <div className="stats-grid">
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#61a5c2" }}>🔭</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">基础电台发现数</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.baseDiscovered}</span>
+                    <span className="stats-card-separator">/</span>
+                    <span className="stats-card-total">{stats.baseTotal}</span>
+                  </p>
+                  <div className="stats-card-progress">
+                    <i style={{ width: `${(stats.baseDiscovered / Math.max(stats.baseTotal, 1)) * 100}%`, background: "#61a5c2" }} />
+                  </div>
+                </div>
+              </article>
+
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#e8c36a" }}>⭐</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">收藏数</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.favoriteCount}</span>
+                    {stats.favoriteTotal > 0 && (
+                      <>
+                        <span className="stats-card-separator">/</span>
+                        <span className="stats-card-total">{stats.favoriteTotal}</span>
+                      </>
+                    )}
+                  </p>
+                  {stats.favoriteTotal > 0 && (
+                    <div className="stats-card-progress">
+                      <i style={{ width: `${(stats.favoriteCount / Math.max(stats.favoriteTotal, 1)) * 100}%`, background: "#e8c36a" }} />
+                    </div>
+                  )}
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div className="stats-section">
+            <h3 className="stats-section-title">📖 故事阅读</h3>
+            <div className="stats-grid">
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#a06cd5" }}>📚</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">故事片段阅读数</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.storyRead}</span>
+                    <span className="stats-card-separator">/</span>
+                    <span className="stats-card-total">{stats.storyTotal}</span>
+                  </p>
+                  <div className="stats-card-progress">
+                    <i style={{ width: `${(stats.storyRead / Math.max(stats.storyTotal, 1)) * 100}%`, background: "#a06cd5" }} />
+                  </div>
+                </div>
+              </article>
+
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#e89b6a" }}>⏰</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">每日广播补听数</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.catchUpCount}</span>
+                    {stats.catchUpTotal > 0 && (
+                      <>
+                        <span className="stats-card-separator">/</span>
+                        <span className="stats-card-total">{stats.catchUpTotal}</span>
+                      </>
+                    )}
+                  </p>
+                  {stats.catchUpTotal > 0 && (
+                    <div className="stats-card-progress">
+                      <i style={{ width: `${(stats.catchUpCount / Math.max(stats.catchUpTotal, 1)) * 100}%`, background: "#e89b6a" }} />
+                    </div>
+                  )}
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div className="stats-section">
+            <h3 className="stats-section-title">📼 录音带收藏</h3>
+            <div className="stats-grid">
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#c2826a" }}>📼</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">录音带数量</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.tapeCount}</span>
+                  </p>
+                </div>
+              </article>
+
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#d46a6a" }}>⚠️</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">异常录音带数量</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.anomalyTapeCount}</span>
+                  </p>
+                  {stats.tapeCount > 0 && (
+                    <div className="stats-card-progress">
+                      <i style={{ width: `${(stats.anomalyTapeCount / Math.max(stats.tapeCount, 1)) * 100}%`, background: "#d46a6a" }} />
+                    </div>
+                  )}
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div className="stats-section">
+            <h3 className="stats-section-title">🏆 成就与谜题</h3>
+            <div className="stats-grid">
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#5aa86a" }}>🧩</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">谜题完成数</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.puzzleSolved}</span>
+                    <span className="stats-card-separator">/</span>
+                    <span className="stats-card-total">{stats.puzzleTotal}</span>
+                  </p>
+                  <div className="stats-card-progress">
+                    <i style={{ width: `${(stats.puzzleSolved / Math.max(stats.puzzleTotal, 1)) * 100}%`, background: "#5aa86a" }} />
+                  </div>
+                </div>
+              </article>
+
+              <article className="stats-card">
+                <div className="stats-card-icon" style={{ background: "#ffd700" }}>🏆</div>
+                <div className="stats-card-info">
+                  <p className="stats-card-label">成就解锁数</p>
+                  <p className="stats-card-value">
+                    <span className="stats-card-current">{stats.achievementUnlocked}</span>
+                    <span className="stats-card-separator">/</span>
+                    <span className="stats-card-total">{stats.achievementTotal}</span>
+                  </p>
+                  <div className="stats-card-progress">
+                    <i style={{ width: `${(stats.achievementUnlocked / Math.max(stats.achievementTotal, 1)) * 100}%`, background: "#ffd700" }} />
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div className="stats-footer">
+            <p className="stats-footer-text">
+              ✦ 数据来源于你的探索记录，所有进度自动同步 ✦
+            </p>
+          </div>
         </div>
       </aside>
     </main>

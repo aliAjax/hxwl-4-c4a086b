@@ -358,6 +358,7 @@ export default function App() {
   const [nightPatrolPaused, setNightPatrolPaused] = useState(false);
   const [nightPatrolAutoResume, setNightPatrolAutoResume] = useState(true);
   const [nightPatrolLastVisitedId, setNightPatrolLastVisitedId] = useState<string | null>(null);
+  const [nightPatrolBypassedStationId, setNightPatrolBypassedStationId] = useState<string | null>(null);
   const [nightPatrolPauseReason, setNightPatrolPauseReason] = useState<"strong" | "weak" | "anomaly" | null>(null);
   const [nightPatrolStats, setNightPatrolStats] = useState({
     stationsVisited: 0,
@@ -437,6 +438,11 @@ export default function App() {
     return getStationMessage(currentStation, now);
   }, [currentStation, now]);
 
+  const patrolBroadcast = useMemo(() => {
+    if (!patrolStation) return null;
+    return getStationMessage(patrolStation, now);
+  }, [patrolStation, now]);
+
   const currentDailyMessage = useMemo(() => {
     if (!currentStation || currentStation.isCustom) return null;
     return getCurrentDayMessage(
@@ -463,6 +469,8 @@ export default function App() {
         : "异常信号"
     };
   }, [currentBroadcast, currentDailyMessage]);
+
+  const activeDisplayBroadcast = displayBroadcast ?? (isNightPatrol && nightPatrolPaused ? patrolBroadcast : null);
 
   const favoriteStations = useMemo(
     () =>
@@ -1258,6 +1266,10 @@ export default function App() {
 
     let reason: "strong" | "weak" | "anomaly" | null = null;
 
+    if (patrolStation?.id && patrolStation.id === nightPatrolBypassedStationId) {
+      return;
+    }
+
     if (hasPatrolStation && isAnomaly && signal >= SCAN_LOCK_THRESHOLD) {
       reason = "anomaly";
     } else if (signal >= SCAN_LOCK_THRESHOLD) {
@@ -1293,7 +1305,8 @@ export default function App() {
     patrolStation,
     currentStation,
     currentDailyMessage,
-    nightPatrolLastVisitedId
+    nightPatrolLastVisitedId,
+    nightPatrolBypassedStationId
   ]);
 
   useEffect(() => {
@@ -1311,13 +1324,19 @@ export default function App() {
     if (duration === 0) return;
 
     const timer = setTimeout(() => {
+      setNightPatrolBypassedStationId(patrolStation?.id ?? null);
       setScanPaused(false);
       setNightPatrolPaused(false);
       setNightPatrolPauseReason(null);
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [isNightPatrol, nightPatrolPaused, nightPatrolAutoResume, nightPatrolPauseReason]);
+  }, [isNightPatrol, nightPatrolPaused, nightPatrolAutoResume, nightPatrolPauseReason, patrolStation]);
+
+  useEffect(() => {
+    if (!nightPatrolBypassedStationId || patrolStation?.id === nightPatrolBypassedStationId) return;
+    setNightPatrolBypassedStationId(null);
+  }, [patrolStation, nightPatrolBypassedStationId]);
 
   function toggleScan() {
     if (isScanning) {
@@ -1329,6 +1348,7 @@ export default function App() {
         setNightPatrolPaused(false);
         setNightPatrolPauseReason(null);
         setNightPatrolLastVisitedId(null);
+        setNightPatrolBypassedStationId(null);
       }
       setIsScanning(true);
       setScanPaused(false);
@@ -1341,6 +1361,7 @@ export default function App() {
       setNightPatrolPaused(false);
       setNightPatrolPauseReason(null);
       setNightPatrolLastVisitedId(null);
+      setNightPatrolBypassedStationId(null);
       setIsScanning(false);
       setScanPaused(false);
     } else {
@@ -1351,6 +1372,7 @@ export default function App() {
       setNightPatrolStats({ stationsVisited: 0, anomaliesFound: 0, favoritesAdded: 0, tapesRecorded: 0 });
       setNightPatrolPauseReason(null);
       setNightPatrolLastVisitedId(null);
+      setNightPatrolBypassedStationId(null);
       setIsNightPatrol(true);
       setNightPatrolPaused(false);
       setIsScanning(true);
@@ -1359,6 +1381,7 @@ export default function App() {
   }
 
   function nightPatrolResume() {
+    setNightPatrolBypassedStationId(patrolStation?.id ?? null);
     setNightPatrolPaused(false);
     setNightPatrolPauseReason(null);
     setScanPaused(false);
@@ -1378,8 +1401,27 @@ export default function App() {
   }
 
   function nightPatrolRecordAndResume() {
-    if (!currentStation || !displayBroadcast) return;
-    handleRecordTape();
+    const targetStation = patrolStation ?? currentStation;
+    const targetBroadcast = activeDisplayBroadcast;
+    if (!targetStation || !targetBroadcast) return;
+
+    const currentSchedule = getCurrentSchedule(targetStation, now);
+
+    setSignalTapeSave((current) =>
+      addSignalTape(current, {
+        stationId: targetStation.id,
+        stationName: targetStation.name,
+        frequency: targetStation.frequency,
+        color: targetStation.color,
+        scheduleName: targetBroadcast.scheduleName,
+        scheduleStartTime: currentSchedule?.startTime ?? null,
+        scheduleEndTime: currentSchedule?.endTime ?? null,
+        content: targetBroadcast.message,
+        isAnomaly: nightPatrolPauseReason === "anomaly"
+      })
+    );
+    setTapeSavedToast(true);
+    setTimeout(() => setTapeSavedToast(false), 2000);
     setNightPatrolStats((s) => ({ ...s, tapesRecorded: s.tapesRecorded + 1 }));
     if (nightPatrolAutoResume) {
       setTimeout(() => nightPatrolResume(), 400);
@@ -1393,6 +1435,7 @@ export default function App() {
       setIsNightPatrol(false);
       setNightPatrolPaused(false);
       setNightPatrolPauseReason(null);
+      setNightPatrolBypassedStationId(null);
     }
     setFrequency(value);
   }
@@ -1597,14 +1640,14 @@ export default function App() {
               {frequency.toFixed(1)} MHz
               {isNightPatrol && <em className="night-patrol-indicator">{nightPatrolPaused ? "🌙 巡频驻留" : "🌙 夜间巡频中"}</em>}
               {!isNightPatrol && isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
-              {displayBroadcast?.scheduleName && <em className="schedule-tag">▸ {displayBroadcast.scheduleName}</em>}
+              {activeDisplayBroadcast?.scheduleName && <em className="schedule-tag">▸ {activeDisplayBroadcast.scheduleName}</em>}
               {currentDailyMessage && <em className="anomaly-tag">⚠ 异常广播</em>}
               {(currentStation ?? patrolStation)?.isCustom && <em className="custom-tag">自建</em>}
             </span>
             <strong>{currentStation ? currentStation.name : patrolStation ? patrolStation.name : isNightPatrol ? "夜空搜索中…" : "沙沙声"}</strong>
             <p>
-              {displayBroadcast
-                ? displayBroadcast.message
+              {activeDisplayBroadcast
+                ? activeDisplayBroadcast.message
                 : isNightPatrol
                   ? nightPatrolPaused
                     ? "检测到信号，正在确认广播内容…"
@@ -1700,7 +1743,7 @@ export default function App() {
                     <button
                       className="patrol-action-btn record"
                       onClick={nightPatrolRecordAndResume}
-                      disabled={!displayBroadcast}
+                      disabled={!activeDisplayBroadcast}
                     >
                       📼 录制
                     </button>

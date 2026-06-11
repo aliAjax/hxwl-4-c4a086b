@@ -323,6 +323,10 @@ const SCAN_LOCK_THRESHOLD = 74;
 const SCAN_PAUSE_DURATION = 1200;
 const SCAN_LOCK_DURATION = 2500;
 
+const NIGHT_PATROL_STRONG_PAUSE_DURATION = 5000;
+const NIGHT_PATROL_WEAK_PAUSE_DURATION = 3000;
+const NIGHT_PATROL_ANOMALY_PAUSE_DURATION = 8000;
+
 const PRESET_COLORS = [
   "#e8c36a",
   "#61a5c2",
@@ -349,6 +353,18 @@ export default function App() {
   const [scanDirection, setScanDirection] = useState<1 | -1>(1);
   const [scanPaused, setScanPaused] = useState(false);
   const [now, setNow] = useState(() => new Date());
+
+  const [isNightPatrol, setIsNightPatrol] = useState(false);
+  const [nightPatrolPaused, setNightPatrolPaused] = useState(false);
+  const [nightPatrolAutoResume, setNightPatrolAutoResume] = useState(true);
+  const [nightPatrolLastVisitedId, setNightPatrolLastVisitedId] = useState<string | null>(null);
+  const [nightPatrolPauseReason, setNightPatrolPauseReason] = useState<"strong" | "weak" | "anomaly" | null>(null);
+  const [nightPatrolStats, setNightPatrolStats] = useState({
+    stationsVisited: 0,
+    anomaliesFound: 0,
+    favoritesAdded: 0,
+    tapesRecorded: 0
+  });
 
   const [labName, setLabName] = useState("");
   const [labFreq, setLabFreq] = useState(90.0);
@@ -413,6 +429,7 @@ export default function App() {
     [frequency, allStations]
   );
   const currentStation = tuned.signal >= 74 ? tuned.station : null;
+  const patrolStation = tuned.signal >= SCAN_PAUSE_THRESHOLD ? tuned.station : null;
   const noise = Math.round(100 - tuned.signal);
 
   const currentBroadcast = useMemo(() => {
@@ -1217,7 +1234,7 @@ export default function App() {
   }, [isScanning, scanPaused, scanDirection]);
 
   useEffect(() => {
-    if (!isScanning) return;
+    if (!isScanning || isNightPatrol) return;
 
     const signal = tuned.signal;
     if (signal >= SCAN_LOCK_THRESHOLD) {
@@ -1229,22 +1246,144 @@ export default function App() {
       const timer = setTimeout(() => setScanPaused(false), SCAN_PAUSE_DURATION);
       return () => clearTimeout(timer);
     }
-  }, [tuned.signal, isScanning]);
+  }, [tuned.signal, isScanning, isNightPatrol]);
+
+  useEffect(() => {
+    if (!isNightPatrol || !isScanning || nightPatrolPaused) return;
+
+    const signal = tuned.signal;
+    const hasPatrolStation = patrolStation !== null;
+    const isAnomaly = currentDailyMessage !== null && !currentStation?.isCustom;
+    const stationChanged = patrolStation?.id !== nightPatrolLastVisitedId;
+
+    let pauseDuration = 0;
+    let reason: "strong" | "weak" | "anomaly" | null = null;
+
+    if (hasPatrolStation && isAnomaly && signal >= SCAN_LOCK_THRESHOLD) {
+      pauseDuration = NIGHT_PATROL_ANOMALY_PAUSE_DURATION;
+      reason = "anomaly";
+    } else if (signal >= SCAN_LOCK_THRESHOLD) {
+      pauseDuration = NIGHT_PATROL_STRONG_PAUSE_DURATION;
+      reason = "strong";
+    } else if (signal >= SCAN_PAUSE_THRESHOLD) {
+      pauseDuration = NIGHT_PATROL_WEAK_PAUSE_DURATION;
+      reason = "weak";
+    }
+
+    if (reason !== null) {
+      setScanPaused(true);
+      setNightPatrolPaused(true);
+      setNightPatrolPauseReason(reason);
+
+      if (stationChanged && patrolStation) {
+        setNightPatrolLastVisitedId(patrolStation.id);
+        setNightPatrolStats((s) => ({
+          ...s,
+          stationsVisited: s.stationsVisited + 1,
+          anomaliesFound: reason === "anomaly" ? s.anomaliesFound + 1 : s.anomaliesFound
+        }));
+      } else if (reason === "anomaly" && !stationChanged && patrolStation) {
+        setNightPatrolStats((s) => ({
+          ...s,
+          anomaliesFound: s.anomaliesFound + 1
+        }));
+      }
+
+      if (nightPatrolAutoResume) {
+        const timer = setTimeout(() => {
+          setScanPaused(false);
+          setNightPatrolPaused(false);
+          setNightPatrolPauseReason(null);
+        }, pauseDuration);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [
+    tuned.signal,
+    isNightPatrol,
+    isScanning,
+    nightPatrolPaused,
+    patrolStation,
+    currentStation,
+    currentDailyMessage,
+    nightPatrolLastVisitedId,
+    nightPatrolAutoResume
+  ]);
 
   function toggleScan() {
     if (isScanning) {
       setIsScanning(false);
       setScanPaused(false);
     } else {
+      if (isNightPatrol) {
+        setIsNightPatrol(false);
+        setNightPatrolPaused(false);
+        setNightPatrolPauseReason(null);
+        setNightPatrolLastVisitedId(null);
+      }
       setIsScanning(true);
       setScanPaused(false);
     }
   }
 
-  function handleFrequencyChange(value: number) {
-    if (isScanning) {
+  function toggleNightPatrol() {
+    if (isNightPatrol) {
+      setIsNightPatrol(false);
+      setNightPatrolPaused(false);
+      setNightPatrolPauseReason(null);
+      setNightPatrolLastVisitedId(null);
       setIsScanning(false);
       setScanPaused(false);
+    } else {
+      if (isScanning) {
+        setIsScanning(false);
+        setScanPaused(false);
+      }
+      setNightPatrolStats({ stationsVisited: 0, anomaliesFound: 0, favoritesAdded: 0, tapesRecorded: 0 });
+      setNightPatrolPauseReason(null);
+      setNightPatrolLastVisitedId(null);
+      setIsNightPatrol(true);
+      setNightPatrolPaused(false);
+      setIsScanning(true);
+      setScanPaused(false);
+    }
+  }
+
+  function nightPatrolResume() {
+    setNightPatrolPaused(false);
+    setNightPatrolPauseReason(null);
+    setScanPaused(false);
+  }
+
+  function nightPatrolToggleFavoriteAndResume() {
+    const targetStation = patrolStation ?? currentStation;
+    if (!targetStation) return;
+    const wasFav = save.favorites.includes(targetStation.id);
+    toggleFavorite(targetStation.id);
+    if (!wasFav) {
+      setNightPatrolStats((s) => ({ ...s, favoritesAdded: s.favoritesAdded + 1 }));
+    }
+    if (nightPatrolAutoResume) {
+      setTimeout(() => nightPatrolResume(), 400);
+    }
+  }
+
+  function nightPatrolRecordAndResume() {
+    if (!currentStation || !displayBroadcast) return;
+    handleRecordTape();
+    setNightPatrolStats((s) => ({ ...s, tapesRecorded: s.tapesRecorded + 1 }));
+    if (nightPatrolAutoResume) {
+      setTimeout(() => nightPatrolResume(), 400);
+    }
+  }
+
+  function handleFrequencyChange(value: number) {
+    if (isScanning || isNightPatrol) {
+      setIsScanning(false);
+      setScanPaused(false);
+      setIsNightPatrol(false);
+      setNightPatrolPaused(false);
+      setNightPatrolPauseReason(null);
     }
     setFrequency(value);
   }
@@ -1444,33 +1583,51 @@ export default function App() {
 
       <section className="console">
         <div className="dial-panel">
-          <div className={`screen ${isScanning ? "scanning" : ""} ${scanPaused ? "paused" : ""} ${currentDailyMessage ? "anomaly" : ""}`} style={{ "--noise": `${noise}%` } as React.CSSProperties}>
+          <div className={`screen ${isScanning ? "scanning" : ""} ${scanPaused ? "paused" : ""} ${currentDailyMessage ? "anomaly" : ""} ${isNightPatrol ? "night-patrol" : ""} ${isNightPatrol && nightPatrolPaused ? "night-patrol-paused" : ""} ${isNightPatrol && nightPatrolPauseReason === "anomaly" ? "night-patrol-alert" : ""}`} style={{ "--noise": `${noise}%` } as React.CSSProperties}>
             <span>
               {frequency.toFixed(1)} MHz
-              {isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
+              {isNightPatrol && <em className="night-patrol-indicator">{nightPatrolPaused ? "🌙 巡频驻留" : "🌙 夜间巡频中"}</em>}
+              {!isNightPatrol && isScanning && <em className="scan-indicator">{scanPaused ? "信号驻留" : "扫描中"}</em>}
               {displayBroadcast?.scheduleName && <em className="schedule-tag">▸ {displayBroadcast.scheduleName}</em>}
               {currentDailyMessage && <em className="anomaly-tag">⚠ 异常广播</em>}
-              {currentStation?.isCustom && <em className="custom-tag">自建</em>}
+              {(currentStation ?? patrolStation)?.isCustom && <em className="custom-tag">自建</em>}
             </span>
-            <strong>{currentStation ? currentStation.name : "沙沙声"}</strong>
-            <p>{displayBroadcast ? displayBroadcast.message : isScanning ? "扫描频段中，信号接近电台时会自动停留。" : "信号还没有咬住频段，慢慢调到更清晰的位置。"}</p>
+            <strong>{currentStation ? currentStation.name : patrolStation ? patrolStation.name : isNightPatrol ? "夜空搜索中…" : "沙沙声"}</strong>
+            <p>
+              {displayBroadcast
+                ? displayBroadcast.message
+                : isNightPatrol
+                  ? nightPatrolPaused
+                    ? "检测到信号，正在确认广播内容…"
+                    : "夜间巡频进行中，扫过频段，寻找值得停留的声音。"
+                  : isScanning
+                    ? "扫描频段中，信号接近电台时会自动停留。"
+                    : "信号还没有咬住频段，慢慢调到更清晰的位置。"}
+            </p>
           </div>
           <div className="scan-controls">
-            <button className={`scan-btn ${isScanning ? "active" : ""}`} onClick={toggleScan}>
-              {isScanning ? "⏹ 停止扫描" : "▶ 信号扫描"}
+            <button className={`scan-btn ${isScanning && !isNightPatrol ? "active" : ""}`} onClick={toggleScan}>
+              {isScanning && !isNightPatrol ? "⏹ 停止扫描" : "▶ 信号扫描"}
+            </button>
+            <button
+              className={`night-patrol-btn ${isNightPatrol ? "active" : ""}`}
+              onClick={toggleNightPatrol}
+              title="夜间巡频模式：巡游频段，强信号自动停留并提供快捷操作"
+            >
+              {isNightPatrol ? "🌙 退出巡频" : "🌙 夜间巡频"}
             </button>
             <div className="scan-direction">
               <button
                 className={`dir-btn ${scanDirection === 1 ? "" : "active"}`}
-                onClick={() => isScanning && setScanDirection(-1)}
-                disabled={!isScanning}
+                onClick={() => (isScanning || isNightPatrol) && setScanDirection(-1)}
+                disabled={!isScanning && !isNightPatrol}
               >
                 ◀
               </button>
               <button
                 className={`dir-btn ${scanDirection === 1 ? "active" : ""}`}
-                onClick={() => isScanning && setScanDirection(1)}
-                disabled={!isScanning}
+                onClick={() => (isScanning || isNightPatrol) && setScanDirection(1)}
+                disabled={!isScanning && !isNightPatrol}
               >
                 ▶
               </button>
@@ -1483,9 +1640,78 @@ export default function App() {
               📼 录制这段
             </button>
           </div>
+
+          {isNightPatrol && (
+            <div className="night-patrol-panel">
+              <div className="night-patrol-stats">
+                <div className="patrol-stat">
+                  <span className="patrol-stat-icon">📡</span>
+                  <span className="patrol-stat-label">访问</span>
+                  <span className="patrol-stat-value">{nightPatrolStats.stationsVisited}</span>
+                </div>
+                <div className="patrol-stat anomaly">
+                  <span className="patrol-stat-icon">⚠</span>
+                  <span className="patrol-stat-label">异常</span>
+                  <span className="patrol-stat-value">{nightPatrolStats.anomaliesFound}</span>
+                </div>
+                <div className="patrol-stat">
+                  <span className="patrol-stat-icon">★</span>
+                  <span className="patrol-stat-label">收藏</span>
+                  <span className="patrol-stat-value">{nightPatrolStats.favoritesAdded}</span>
+                </div>
+                <div className="patrol-stat">
+                  <span className="patrol-stat-icon">📼</span>
+                  <span className="patrol-stat-label">录制</span>
+                  <span className="patrol-stat-value">{nightPatrolStats.tapesRecorded}</span>
+                </div>
+                <label className="patrol-autoresume-toggle">
+                  <input
+                    type="checkbox"
+                    checked={nightPatrolAutoResume}
+                    onChange={(e) => setNightPatrolAutoResume(e.target.checked)}
+                  />
+                  <span>自动续巡</span>
+                </label>
+              </div>
+
+              {nightPatrolPaused && patrolStation && (
+                <div className={`night-patrol-actions ${nightPatrolPauseReason || ""}`}>
+                  <div className="patrol-pause-reason">
+                    {nightPatrolPauseReason === "anomaly" && <span className="pause-reason-tag anomaly">⚠ 检测到异常广播 · 重点停留</span>}
+                    {nightPatrolPauseReason === "strong" && <span className="pause-reason-tag strong">📶 强信号锁定</span>}
+                    {nightPatrolPauseReason === "weak" && <span className="pause-reason-tag weak">〰 信号接近中…</span>}
+                  </div>
+                  <div className="patrol-action-buttons">
+                    <button
+                      className={`patrol-action-btn favorite ${save.favorites.includes(patrolStation.id) ? "active" : ""}`}
+                      onClick={nightPatrolToggleFavoriteAndResume}
+                    >
+                      {save.favorites.includes(patrolStation.id) ? "★ 已收藏" : "☆ 收藏"}
+                    </button>
+                    <button
+                      className="patrol-action-btn record"
+                      onClick={nightPatrolRecordAndResume}
+                      disabled={!displayBroadcast}
+                    >
+                      📼 录制
+                    </button>
+                    {nightPatrolAutoResume ? (
+                      <button className="patrol-action-btn resume" onClick={nightPatrolResume}>
+                        ▶▶ 立即继续
+                      </button>
+                    ) : (
+                      <button className="patrol-action-btn resume" onClick={nightPatrolResume}>
+                        ▶ 继续巡频
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <input min="87.5" max="108" step="0.1" value={frequency} onChange={(event) => handleFrequencyChange(Number(event.target.value))} type="range" />
           <div className={`meter ${isScanning ? "scanning" : ""} ${scanPaused ? "pulsing" : ""}`}>
-            <i style={{ width: `${Math.round(tuned.signal)}%`, background: currentStation?.color ?? "#9aa0a6" }} />
+            <i style={{ width: `${Math.round(tuned.signal)}%`, background: (currentStation ?? patrolStation)?.color ?? "#9aa0a6" }} />
           </div>
         </div>
 

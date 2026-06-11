@@ -57,6 +57,26 @@ import {
   type AchievementSave,
   type AchievementContext as AchCtx
 } from "./achievements";
+import {
+  signalPuzzles,
+  loadPuzzleSave,
+  savePuzzleSave,
+  solvePuzzle,
+  isPuzzleUnlocked,
+  getPuzzleUnlockHint,
+  checkMorseAnswer,
+  checkSequenceAnswer,
+  checkFrequencyAnswer,
+  getVisiblePuzzles,
+  getTotalPuzzleCount,
+  getSolvedVisibleCount,
+  formatSolvedTime,
+  getUnsolvedPuzzles,
+  type SignalPuzzle,
+  type SignalPuzzleSave,
+  type SequencePuzzleData,
+  type FrequencyPuzzleData
+} from "./signalPuzzle";
 
 type Schedule = {
   id: string;
@@ -347,6 +367,16 @@ export default function App() {
   const [achievementOpen, setAchievementOpen] = useState(false);
   const [newAchievementToast, setNewAchievementToast] = useState<Achievement | null>(null);
 
+  const [puzzleSave, setPuzzleSave] = useState<SignalPuzzleSave>(loadPuzzleSave);
+  const [puzzleOpen, setPuzzleOpen] = useState(false);
+  const [activePuzzleId, setActivePuzzleId] = useState<string | null>(null);
+  const [puzzleSolvedView, setPuzzleSolvedView] = useState(false);
+  const [morseAnswer, setMorseAnswer] = useState("");
+  const [sequenceOrder, setSequenceOrder] = useState<string[]>([]);
+  const [frequencyOrder, setFrequencyOrder] = useState<string[]>([]);
+  const [puzzleError, setPuzzleError] = useState<string | null>(null);
+  const [newPuzzleToast, setNewPuzzleToast] = useState<SignalPuzzle | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
@@ -617,6 +647,35 @@ export default function App() {
     anomalyTapesCount
   ]);
 
+  const puzzleContext = useMemo(() => ({
+    discoveredStations: save.discovered,
+    readFragments: storylineSave.readFragments,
+    discoveredBroadcasts: dailySave.discoveredBroadcasts,
+    solvedPuzzles: puzzleSave.solvedPuzzles
+  }), [
+    save.discovered,
+    storylineSave.readFragments,
+    dailySave.discoveredBroadcasts,
+    puzzleSave.solvedPuzzles
+  ]);
+
+  const visiblePuzzles = useMemo(
+    () => getVisiblePuzzles(puzzleSave.solvedPuzzles),
+    [puzzleSave.solvedPuzzles]
+  );
+
+  const unsolvedPuzzles = useMemo(
+    () => getUnsolvedPuzzles(signalPuzzles, puzzleContext),
+    [puzzleContext]
+  );
+
+  const activePuzzle = useMemo(
+    () => signalPuzzles.find((p) => p.id === activePuzzleId) || null,
+    [activePuzzleId]
+  );
+
+  const unsolvedCount = unsolvedPuzzles.length;
+
   useEffect(() => {
     const newly = checkNewlyUnlocked(achievementSave, achievementContext);
     if (newly.length > 0) {
@@ -630,6 +689,117 @@ export default function App() {
   useEffect(() => {
     saveAchievementSave(achievementSave);
   }, [achievementSave]);
+
+  useEffect(() => {
+    savePuzzleSave(puzzleSave);
+  }, [puzzleSave]);
+
+  function openPuzzleDrawer() {
+    setPuzzleOpen(true);
+    setActivePuzzleId(null);
+    setPuzzleSolvedView(false);
+    setPuzzleError(null);
+  }
+
+  function closePuzzleDrawer() {
+    setPuzzleOpen(false);
+  }
+
+  function openPuzzle(puzzleId: string) {
+    const puzzle = signalPuzzles.find((p) => p.id === puzzleId);
+    if (!puzzle) return;
+
+    setActivePuzzleId(puzzleId);
+    setPuzzleSolvedView(false);
+    setPuzzleError(null);
+    setMorseAnswer("");
+    setPuzzleError(null);
+
+    if (puzzle.data.type === "sequence") {
+      setSequenceOrder([...puzzle.data.items].sort(() => Math.random() - 0.5).map((item) => item.id));
+    } else if (puzzle.data.type === "frequency") {
+      setFrequencyOrder([]);
+    }
+
+    if (puzzleSave.solvedPuzzles.includes(puzzleId)) {
+      setPuzzleSolvedView(true);
+    }
+  }
+
+  function backToPuzzleList() {
+    setActivePuzzleId(null);
+    setPuzzleSolvedView(false);
+    setPuzzleError(null);
+  }
+
+  function handleSubmitMorse() {
+    if (!activePuzzle || activePuzzle.data.type !== "morse") return;
+
+    if (checkMorseAnswer(activePuzzle, morseAnswer)) {
+      setPuzzleSave((current) => solvePuzzle(current, activePuzzle.id));
+      setPuzzleSolvedView(true);
+      setNewPuzzleToast(activePuzzle);
+      setTimeout(() => setNewPuzzleToast(null), 4000);
+    } else {
+      setPuzzleError("答案不对，再想想看？");
+    }
+  }
+
+  function handleSubmitSequence() {
+    if (!activePuzzle || activePuzzle.data.type !== "sequence") return;
+
+    if (checkSequenceAnswer(activePuzzle, sequenceOrder)) {
+      setPuzzleSave((current) => solvePuzzle(current, activePuzzle.id));
+      setPuzzleSolvedView(true);
+      setNewPuzzleToast(activePuzzle);
+      setTimeout(() => setNewPuzzleToast(null), 4000);
+    } else {
+      setPuzzleError("顺序不对，再调整一下？");
+    }
+  }
+
+  function handleSubmitFrequency() {
+    if (!activePuzzle || activePuzzle.data.type !== "frequency") return;
+
+    if (checkFrequencyAnswer(activePuzzle, frequencyOrder)) {
+      setPuzzleSave((current) => solvePuzzle(current, activePuzzle.id));
+      setPuzzleSolvedView(true);
+      setNewPuzzleToast(activePuzzle);
+      setTimeout(() => setNewPuzzleToast(null), 4000);
+    } else {
+      setPuzzleError("顺序不对，重新排列试试？");
+    }
+  }
+
+  function toggleFrequencyOption(optionId: string) {
+    if (frequencyOrder.includes(optionId)) {
+      setFrequencyOrder((current) => current.filter((id) => id !== optionId));
+    } else {
+      setFrequencyOrder((current) => [...current, optionId]);
+    }
+    setPuzzleError(null);
+  }
+
+  function removeFrequencyOption(optionId: string) {
+    setFrequencyOrder((current) => current.filter((id) => id !== optionId));
+  }
+
+  function moveSequenceItem(fromIndex: number, toIndex: number) {
+    if (toIndex < 0 || toIndex >= sequenceOrder.length) return;
+    const newOrder = [...sequenceOrder];
+    const [removed] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, removed);
+    setSequenceOrder(newOrder);
+    setPuzzleError(null);
+  }
+
+  function openPuzzleFromStory(stationId: string) {
+    const puzzle = unsolvedPuzzles.find((p) => p.stationId === stationId);
+    if (puzzle) {
+      openPuzzleDrawer();
+      openPuzzle(puzzle.id);
+    }
+  }
 
   function openDailyBroadcast() {
     setDailyOpen(true);
@@ -962,6 +1132,11 @@ export default function App() {
               <span className="achievement-count">
                 {getUnlockedVisibleCount(achievementSave.unlocked)}/{getTotalAchievementCount(achievementSave.unlocked)}
               </span>
+            </button>
+            <button className="puzzle-trigger" onClick={openPuzzleDrawer}>
+              <span className="puzzle-trigger-icon">🧩</span>
+              <span>信号谜题</span>
+              {unsolvedCount > 0 && <span className="puzzle-count">{unsolvedCount}</span>}
             </button>
           </div>
         </div>
@@ -1515,6 +1690,17 @@ export default function App() {
 
                 if (isHidden) return null;
 
+                const chapterStationMap: Record<string, string> = {
+                  "chapter-rain": "rain",
+                  "chapter-salt": "salt",
+                  "chapter-train": "train",
+                  "chapter-green": "green",
+                };
+                const stationId = chapterStationMap[chapter.id];
+                const chapterPuzzle = stationId
+                  ? unsolvedPuzzles.find((p) => p.stationId === stationId)
+                  : null;
+
                 return (
                   <article
                     key={chapter.id}
@@ -1530,6 +1716,9 @@ export default function App() {
                     <div className="storyline-chapter-info">
                       <strong style={{ color: isUnlocked ? chapter.color : "#5a6b6d" }}>
                         {chapter.title}
+                        {chapterPuzzle && (
+                          <span className="story-puzzle-badge">🧩 有谜题</span>
+                        )}
                       </strong>
                       <p className="storyline-chapter-subtitle">{chapter.subtitle}</p>
                       {isUnlocked ? (
@@ -1548,6 +1737,20 @@ export default function App() {
                         </div>
                       ) : (
                         <p className="storyline-unlock-hint">{getChapterUnlockHint(chapter)}</p>
+                      )}
+                      {chapterPuzzle && isUnlocked && (
+                        <div
+                          className="story-puzzle-hint"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPuzzleFromStory(stationId!);
+                          }}
+                        >
+                          <span className="story-puzzle-hint-icon">🧩</span>
+                          <span className="story-puzzle-hint-text">
+                            {chapterPuzzle.title} — 点击解开
+                          </span>
+                        </div>
                       )}
                     </div>
                     {isUnlocked && <span className="storyline-chapter-arrow">▶</span>}
@@ -2091,6 +2294,14 @@ export default function App() {
         </div>
       </div>
 
+      <div className={`puzzle-toast ${newPuzzleToast ? "show" : ""}`}>
+        <span className="puzzle-toast-icon">🧩</span>
+        <div className="puzzle-toast-content">
+          <strong>谜题解开！</strong>
+          <p>{newPuzzleToast?.title}</p>
+        </div>
+      </div>
+
       <div className={`drawer-overlay ${achievementOpen ? "open" : ""}`} onClick={() => setAchievementOpen(false)} />
       <aside className={`achievement-drawer ${achievementOpen ? "open" : ""}`}>
         <header className="drawer-header">
@@ -2171,6 +2382,248 @@ export default function App() {
               );
             })}
           </div>
+        </div>
+      </aside>
+
+      <div className={`drawer-overlay ${puzzleOpen ? "open" : ""}`} onClick={closePuzzleDrawer} />
+      <aside className={`puzzle-drawer ${puzzleOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>{activePuzzle ? activePuzzle.title : "信号谜题"}</h2>
+            <p className="drawer-subtitle">
+              {activePuzzle
+                ? activePuzzle.subtitle
+                : `已解开 ${getSolvedVisibleCount(puzzleSave.solvedPuzzles)} / ${getTotalPuzzleCount(puzzleSave.solvedPuzzles)} 道谜题`}
+            </p>
+          </div>
+          <button className="drawer-close" onClick={closePuzzleDrawer}>
+            ✕
+          </button>
+        </header>
+
+        <div className="drawer-content">
+          {!activePuzzle && (
+            <div className="puzzle-list">
+              <div className="puzzle-summary">
+                <div className="puzzle-summary-bar">
+                  <i
+                    style={{
+                      width: `${
+                        (getSolvedVisibleCount(puzzleSave.solvedPuzzles) /
+                          Math.max(getTotalPuzzleCount(puzzleSave.solvedPuzzles), 1)) *
+                        100
+                      }%`
+                    }}
+                  />
+                </div>
+              </div>
+              {getVisiblePuzzles(puzzleSave.solvedPuzzles).map((puzzle) => {
+                const isSolved = puzzleSave.solvedPuzzles.includes(puzzle.id);
+                const isUnlocked = isPuzzleUnlocked(puzzle, puzzleContext);
+                const solvedAt = puzzleSave.solvedAt[puzzle.id];
+
+                return (
+                  <article
+                    key={puzzle.id}
+                    className={`puzzle-card ${isSolved ? "solved" : isUnlocked ? "unlocked" : "locked"}`}
+                    onClick={() => isUnlocked && openPuzzle(puzzle.id)}
+                  >
+                    <div
+                      className="puzzle-icon"
+                      style={{ background: isUnlocked ? puzzle.color : "#2d3434" }}
+                    >
+                      {isSolved ? "✓" : isUnlocked ? puzzle.icon : "🔒"}
+                    </div>
+                    <div className="puzzle-info">
+                      <strong style={{ color: isUnlocked ? puzzle.color : "#5a6b6d" }}>
+                        {puzzle.title}
+                      </strong>
+                      <p className="puzzle-subtitle">{puzzle.subtitle}</p>
+                      {isSolved ? (
+                        <p className="puzzle-time">
+                          🧩 已解开 · {formatSolvedTime(solvedAt)}
+                        </p>
+                      ) : isUnlocked ? (
+                        <p className="puzzle-status">点击开始挑战</p>
+                      ) : (
+                        <p className="puzzle-hint">
+                          {getPuzzleUnlockHint(puzzle, puzzleContext)}
+                        </p>
+                      )}
+                    </div>
+                    {isUnlocked && <span className="puzzle-arrow">▶</span>}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {activePuzzle && !puzzleSolvedView && (
+            <div className="puzzle-detail">
+              <button className="puzzle-back-btn" onClick={backToPuzzleList}>
+                ← 返回谜题列表
+              </button>
+              <div className="puzzle-header">
+                <h3 className="puzzle-title" style={{ color: activePuzzle.color }}>
+                  {activePuzzle.title}
+                </h3>
+                <p className="puzzle-desc">{activePuzzle.description}</p>
+              </div>
+
+              {activePuzzle.data.type === "morse" && (
+                <div className="puzzle-morse-area">
+                  <div className="puzzle-morse-display">
+                    <p className="puzzle-morse-code">{activePuzzle.data.morseCode}</p>
+                    <p className="puzzle-morse-hint">
+                      提示：· 代表短信号，— 代表长信号。输入字母作为答案。
+                    </p>
+                  </div>
+                  <input
+                    type="text"
+                    className="puzzle-morse-input"
+                    value={morseAnswer}
+                    onChange={(e) => setMorseAnswer(e.target.value.toUpperCase())}
+                    placeholder="输入答案..."
+                    maxLength={20}
+                  />
+                </div>
+              )}
+
+              {activePuzzle.data.type === "sequence" && (
+                <div className="puzzle-sequence-area">
+                  <p className="puzzle-sequence-hint">{activePuzzle.data.hint}</p>
+                  <div className="puzzle-sequence-items">
+                    {sequenceOrder.map((itemId, index) => {
+                      const seqData = activePuzzle.data as SequencePuzzleData;
+                      const item = seqData.items.find((i: { id: string }) => i.id === itemId);
+                      if (!item) return null;
+                      return (
+                        <div key={item.id} className="puzzle-sequence-item">
+                          <span className="puzzle-sequence-order">{index + 1}</span>
+                          <div className="puzzle-sequence-content">
+                            <div className="puzzle-sequence-icon">{item.icon}</div>
+                            <span className="puzzle-sequence-name">{item.name}</span>
+                          </div>
+                          <div className="puzzle-sequence-controls">
+                            <button
+                              onClick={() => moveSequenceItem(index, index - 1)}
+                              disabled={index === 0}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={() => moveSequenceItem(index, index + 1)}
+                              disabled={index === sequenceOrder.length - 1}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activePuzzle.data.type === "frequency" && (
+                <div className="puzzle-frequency-area">
+                  <p className="puzzle-frequency-hint">{activePuzzle.data.hint}</p>
+                  <div className="puzzle-frequency-selected">
+                    <p className="puzzle-frequency-label">已选择的顺序：</p>
+                    <div className="puzzle-frequency-selected-list">
+                      {frequencyOrder.length === 0 && (
+                        <span className="puzzle-frequency-empty">还没选择...</span>
+                      )}
+                      {frequencyOrder.map((optId, index) => {
+                        const freqData = activePuzzle.data as FrequencyPuzzleData;
+                        const opt = freqData.options.find((o: { id: string }) => o.id === optId);
+                        if (!opt) return null;
+                        return (
+                          <div
+                            key={opt.id}
+                            className="puzzle-frequency-selected-item"
+                            onClick={() => removeFrequencyOption(opt.id)}
+                            style={{ borderColor: opt.color }}
+                          >
+                            <span className="puzzle-frequency-selected-num">{index + 1}</span>
+                            <span className="puzzle-frequency-selected-name">{opt.name}</span>
+                            <span className="puzzle-frequency-selected-remove">✕</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="puzzle-frequency-options">
+                    <p className="puzzle-frequency-label">可选频率：</p>
+                    <div className="puzzle-frequency-options-grid">
+                      {(activePuzzle.data as FrequencyPuzzleData).options.map((opt) => {
+                        const isSelected = frequencyOrder.includes(opt.id);
+                        return (
+                          <button
+                            key={opt.id}
+                            className={`puzzle-frequency-option ${isSelected ? "selected" : ""}`}
+                            onClick={() => toggleFrequencyOption(opt.id)}
+                            style={{
+                              borderColor: isSelected ? opt.color : "#2d3434",
+                              background: isSelected ? `${opt.color}15` : "transparent"
+                            }}
+                            disabled={isSelected}
+                          >
+                            <div className="puzzle-frequency-option-icon" style={{ background: opt.color }}>
+                              {opt.icon}
+                            </div>
+                            <span className="puzzle-frequency-option-name">{opt.name}</span>
+                            <span className="puzzle-frequency-option-freq">{opt.freq}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {puzzleError && <p className="puzzle-error">{puzzleError}</p>}
+
+              <button
+                className="puzzle-submit-btn"
+                style={{ background: activePuzzle.color }}
+                onClick={() => {
+                  if (activePuzzle.data.type === "morse") handleSubmitMorse();
+                  else if (activePuzzle.data.type === "sequence") handleSubmitSequence();
+                  else if (activePuzzle.data.type === "frequency") handleSubmitFrequency();
+                }}
+              >
+                提交答案
+              </button>
+            </div>
+          )}
+
+          {activePuzzle && puzzleSolvedView && (
+            <div className="puzzle-reward">
+              <button className="puzzle-back-btn" onClick={backToPuzzleList}>
+                ← 返回谜题列表
+              </button>
+              <div className="puzzle-reward-header">
+                <div
+                  className="puzzle-reward-icon"
+                  style={{ background: activePuzzle.color }}
+                >
+                  ✓
+                </div>
+                <h3 className="puzzle-reward-title" style={{ color: activePuzzle.color }}>
+                  {activePuzzle.reward.title}
+                </h3>
+              </div>
+              <div className="puzzle-reward-content">
+                {activePuzzle.reward.content.split("\n").map((paragraph, idx) => (
+                  <p key={idx}>{paragraph}</p>
+                ))}
+              </div>
+              <p className="puzzle-reward-footnote">
+                —— {activePuzzle.title} 谜题奖励片段
+              </p>
+            </div>
+          )}
         </div>
       </aside>
     </main>

@@ -460,9 +460,16 @@ export default function App() {
   );
 
   const lastListenedStation = useMemo(() => {
-    if (favoriteStations.length === 0) return null;
-    return favoriteStations[0];
-  }, [favoriteStations]);
+    return (
+      allStations
+        .filter((station) => save.favorites.includes(station.id))
+        .sort((a, b) => {
+          const aTime = save.lastListenedAt[a.id] ?? 0;
+          const bTime = save.lastListenedAt[b.id] ?? 0;
+          return bTime - aTime;
+        })[0] ?? null
+    );
+  }, [save.favorites, save.lastListenedAt, allStations]);
 
   const labFreqConflict = useMemo(() => {
     return checkFrequencyConflict(labFreq, allStations, editingCustomId ?? undefined);

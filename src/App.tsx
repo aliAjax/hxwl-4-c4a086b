@@ -114,6 +114,7 @@ type RadioSave = {
   discoveredAt: Record<string, number>;
   lastListenedAt: Record<string, number>;
   notes: Record<string, string>;
+  pinnedAt: Record<string, number>;
 };
 
 const storageKey = "hxwl-4-radio";
@@ -216,10 +217,11 @@ function loadSave(): RadioSave {
       favorites: data.favorites || [],
       discoveredAt: data.discoveredAt || {},
       lastListenedAt: data.lastListenedAt || {},
-      notes: data.notes || {}
+      notes: data.notes || {},
+      pinnedAt: data.pinnedAt || {}
     };
   } catch {
-    return { discovered: [], favorites: [], discoveredAt: {}, lastListenedAt: {}, notes: {} };
+    return { discovered: [], favorites: [], discoveredAt: {}, lastListenedAt: {}, notes: {}, pinnedAt: {} };
   }
 }
 
@@ -445,11 +447,16 @@ export default function App() {
       allStations
         .filter((station) => save.favorites.includes(station.id))
         .sort((a, b) => {
+          const aPinned = save.pinnedAt[a.id] ?? 0;
+          const bPinned = save.pinnedAt[b.id] ?? 0;
+          if (aPinned && bPinned) return bPinned - aPinned;
+          if (aPinned) return -1;
+          if (bPinned) return 1;
           const aTime = save.lastListenedAt[a.id] ?? 0;
           const bTime = save.lastListenedAt[b.id] ?? 0;
           return bTime - aTime;
         }),
-    [save.favorites, save.lastListenedAt, allStations]
+    [save.favorites, save.lastListenedAt, save.pinnedAt, allStations]
   );
 
   const lastListenedStation = useMemo(() => {
@@ -1165,10 +1172,30 @@ export default function App() {
   }
 
   function toggleFavorite(id: string) {
-    setSave((current) => ({
-      ...current,
-      favorites: current.favorites.includes(id) ? current.favorites.filter((item) => item !== id) : [...current.favorites, id]
-    }));
+    setSave((current) => {
+      const isFav = current.favorites.includes(id);
+      const nextPinnedAt = isFav
+        ? Object.fromEntries(Object.entries(current.pinnedAt).filter(([key]) => key !== id))
+        : current.pinnedAt;
+      return {
+        ...current,
+        favorites: isFav ? current.favorites.filter((item) => item !== id) : [...current.favorites, id],
+        pinnedAt: nextPinnedAt
+      };
+    });
+  }
+
+  function togglePin(id: string) {
+    setSave((current) => {
+      const isPinned = !!current.pinnedAt[id];
+      const nextPinnedAt = { ...current.pinnedAt };
+      if (isPinned) {
+        delete nextPinnedAt[id];
+      } else {
+        nextPinnedAt[id] = Date.now();
+      }
+      return { ...current, pinnedAt: nextPinnedAt };
+    });
   }
 
   function tuneToStation(station: Station) {
@@ -1656,8 +1683,9 @@ export default function App() {
               {favoriteStations.map((station) => {
                 const isTuned = currentStation?.id === station.id;
                 const lastListened = save.lastListenedAt[station.id];
+                const isPinned = !!save.pinnedAt[station.id];
                 return (
-                  <article key={station.id} className={`favorite-item ${isTuned ? "tuned" : ""}`}>
+                  <article key={station.id} className={`favorite-item ${isTuned ? "tuned" : ""} ${isPinned ? "pinned" : ""}`}>
                     <span className="favorite-freq" style={{ background: station.color }}>
                       {station.frequency.toFixed(1)}
                     </span>
@@ -1665,10 +1693,18 @@ export default function App() {
                       <strong>
                         {station.name}
                         {station.isCustom && <em className="custom-tag-inline">自建</em>}
+                        {isPinned && <em className="pinned-tag-inline">置顶</em>}
                       </strong>
                       <p className="favorite-time">{formatLastListenedTime(lastListened)}</p>
                     </div>
                     <div className="favorite-actions">
+                      <button
+                        className={`favorite-pin-btn ${isPinned ? "active" : ""}`}
+                        onClick={() => togglePin(station.id)}
+                        title={isPinned ? "取消置顶" : "置顶"}
+                      >
+                        📌
+                      </button>
                       <button
                         className="favorite-tune-btn"
                         onClick={() => tuneToStation(station)}

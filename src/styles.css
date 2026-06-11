@@ -779,6 +779,50 @@ input[type="range"] {
   color: #ff8080;
 }
 
+.favorite-pin-btn {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #889697;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 180ms ease;
+  line-height: 1;
+}
+
+.favorite-pin-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.favorite-pin-btn.active {
+  background: rgba(232, 195, 106, 0.2);
+  color: #e8c36a;
+}
+
+.favorite-pin-btn.active:hover {
+  background: rgba(232, 195, 106, 0.35);
+}
+
+.favorite-item.pinned {
+  border-color: rgba(232, 195, 106, 0.2);
+  background: linear-gradient(135deg, rgba(232, 195, 106, 0.08), #1b2324);
+}
+
+.pinned-tag-inline {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+  border-radius: 999px;
+  background: rgba(232, 195, 106, 0.2);
+  color: #e8c36a;
+  vertical-align: middle;
+}
+
 .station-actions {
   display: flex;
   flex-direction: column;

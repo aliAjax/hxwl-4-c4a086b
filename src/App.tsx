@@ -84,6 +84,15 @@ import {
   type SequencePuzzleData,
   type FrequencyPuzzleData
 } from "./signalPuzzle";
+import {
+  buildTimeline,
+  getTimelineUnreadCount,
+  getTimelineContinueReading,
+  formatTimelineTime,
+  formatTimelineDetailTime,
+  type TimelineItem,
+  type ReadingTimelineResult
+} from "./timeline";
 
 type Schedule = {
   id: string;
@@ -408,6 +417,10 @@ export default function App() {
   const [newPuzzleToast, setNewPuzzleToast] = useState<SignalPuzzle | null>(null);
 
   const [statsOpen, setStatsOpen] = useState(false);
+
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timelineFilterType, setTimelineFilterType] = useState<"all" | "story" | "daily" | "puzzle" | "tape">("all");
+  const [timelineOnlyUnread, setTimelineOnlyUnread] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
@@ -859,6 +872,70 @@ export default function App() {
     setPuzzleOpen(false);
   }
 
+  function openTimeline() {
+    setTimelineOpen(true);
+    setTimelineFilterType("all");
+    setTimelineOnlyUnread(false);
+  }
+
+  function closeTimeline() {
+    setTimelineOpen(false);
+  }
+
+  function openTimelineItem(item: TimelineItem) {
+    if (item.target.type === "story") {
+      const { chapterId, fragmentId } = item.target;
+      setTimelineOpen(false);
+      setStorylineOpen(true);
+      setActiveChapterId(chapterId);
+      if (fragmentId) {
+        setActiveFragmentId(fragmentId);
+        setStorylineSave((current) => {
+          if (current.readFragments.includes(fragmentId)) {
+            return {
+              ...current,
+              lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+            };
+          }
+          return {
+            ...current,
+            readFragments: [...current.readFragments, fragmentId],
+            lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+          };
+        });
+      }
+    } else if (item.target.type === "daily") {
+      const { broadcastId, fragmentId } = item.target;
+      setTimelineOpen(false);
+      setDailyOpen(true);
+      setActiveDailyId(broadcastId);
+      if (fragmentId) {
+        setActiveDailyFragmentId(fragmentId);
+        setDailySave((current) => {
+          if (current.readFragments.includes(fragmentId)) {
+            return {
+              ...current,
+              lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+            };
+          }
+          return {
+            ...current,
+            readFragments: [...current.readFragments, fragmentId],
+            lastReadAt: { ...current.lastReadAt, [fragmentId]: Date.now() }
+          };
+        });
+      }
+    } else if (item.target.type === "puzzle") {
+      setTimelineOpen(false);
+      openPuzzleDrawer();
+      openPuzzle(item.target.puzzleId);
+    } else if (item.target.type === "tape") {
+      setTimelineOpen(false);
+      openSignalTape();
+      openTapeDetail(item.target.tapeId);
+    }
+  }
+
   function openPuzzle(puzzleId: string) {
     const puzzle = signalPuzzles.find((p) => p.id === puzzleId);
     if (!puzzle) return;
@@ -1170,7 +1247,40 @@ export default function App() {
     [dailySave]
   );
 
+  const timelineItems = useMemo(
+    () => buildTimeline(storylineSave, dailySave, puzzleSave, signalTapeSave),
+    [storylineSave, dailySave, puzzleSave, signalTapeSave]
+  );
+
+  const timelineUnreadCount = useMemo(
+    () => getTimelineUnreadCount(timelineItems),
+    [timelineItems]
+  );
+
+  const filteredTimelineItems = useMemo(() => {
+    let result = timelineItems;
+
+    if (timelineFilterType !== "all") {
+      result = result.filter((item) => item.type === timelineFilterType);
+    }
+
+    if (timelineOnlyUnread) {
+      result = result.filter((item) => item.isUnread);
+    }
+
+    return result;
+  }, [timelineItems, timelineFilterType, timelineOnlyUnread]);
+
+  const timelineContinueReading = useMemo(
+    () => getTimelineContinueReading(timelineItems),
+    [timelineItems]
+  );
+
   const continueReadingTarget = useMemo(() => {
+    if (timelineContinueReading) {
+      return timelineContinueReading;
+    }
+
     const storyHasUnread = storyContinueReading && 
       !storyChapters
         .find(c => c.id === storyContinueReading.chapterId)
@@ -1218,7 +1328,7 @@ export default function App() {
     }
 
     return null;
-  }, [storyContinueReading, dailyContinueReading, storylineSave, dailySave]);
+  }, [timelineContinueReading, storyContinueReading, dailyContinueReading, storylineSave, dailySave]);
 
   useEffect(() => {
     if (!isScanning || scanPaused) return;
@@ -1587,6 +1697,11 @@ export default function App() {
                 </span>
               </button>
             )}
+            <button className="timeline-trigger" onClick={openTimeline}>
+              <span className="timeline-trigger-icon">⏱</span>
+              <span>阅读时间轴</span>
+              {timelineUnreadCount > 0 && <span className="timeline-count">{timelineUnreadCount}</span>}
+            </button>
             <button className="daily-trigger" onClick={openDailyBroadcast}>
               <span className="daily-trigger-icon">📡</span>
               <span>每日异常广播</span>
@@ -3328,6 +3443,132 @@ export default function App() {
               <p className="puzzle-reward-footnote">
                 —— {activePuzzle.title} 谜题奖励片段
               </p>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className={`drawer-overlay ${timelineOpen ? "open" : ""}`} onClick={closeTimeline} />
+      <aside className={`timeline-drawer ${timelineOpen ? "open" : ""}`}>
+        <header className="drawer-header">
+          <div>
+            <h2>阅读时间轴</h2>
+            <p className="drawer-subtitle">
+              按时间顺序浏览已解锁的故事、广播、谜题奖励和录音带
+              {timelineUnreadCount > 0 && ` · ${timelineUnreadCount} 条未读`}
+            </p>
+          </div>
+          <button className="drawer-close" onClick={closeTimeline}>
+            ✕
+          </button>
+        </header>
+
+        <div className="timeline-filters">
+          <div className="timeline-filter-group">
+            <span className="timeline-filter-label">类型：</span>
+            {(["all", "story", "daily", "puzzle", "tape"] as const).map((type) => (
+              <button
+                key={type}
+                className={`timeline-filter-btn ${timelineFilterType === type ? "active" : ""}`}
+                onClick={() => setTimelineFilterType(type)}
+              >
+                {type === "all" ? "全部" : type === "story" ? "故事线" : type === "daily" ? "每日广播" : type === "puzzle" ? "谜题" : "录音带"}
+              </button>
+            ))}
+          </div>
+          <label className="timeline-unread-toggle">
+            <input
+              type="checkbox"
+              checked={timelineOnlyUnread}
+              onChange={(e) => setTimelineOnlyUnread(e.target.checked)}
+            />
+            <span>仅显示未读</span>
+          </label>
+        </div>
+
+        <div className="drawer-content">
+          {filteredTimelineItems.length === 0 ? (
+            <div className="timeline-empty">
+              <div className="timeline-empty-icon">⏱</div>
+              <p>还没有时间轴记录</p>
+              <p className="timeline-empty-hint">
+                {timelineOnlyUnread ? "没有未读内容了" : "继续探索电台，解锁更多内容"}
+              </p>
+            </div>
+          ) : (
+            <div className="timeline-list">
+              {filteredTimelineItems.map((item, index) => {
+                const showDateDivider = index === 0 || 
+                  new Date(item.timestamp).toDateString() !== 
+                  new Date(filteredTimelineItems[index - 1].timestamp).toDateString();
+                
+                return (
+                  <div key={item.id}>
+                    {showDateDivider && (
+                      <div className="timeline-date-divider">
+                        <span>{new Date(item.timestamp).toLocaleDateString("zh-CN", { 
+                          year: "numeric", 
+                          month: "long", 
+                          day: "numeric",
+                          weekday: "long"
+                        })}</span>
+                      </div>
+                    )}
+                    <article
+                      className={`timeline-item ${item.isUnread ? "unread" : ""} ${item.type}`}
+                      onClick={() => openTimelineItem(item)}
+                    >
+                      <div className="timeline-item-line">
+                        <div 
+                          className="timeline-item-dot"
+                          style={{ background: item.color }}
+                        >
+                          {item.icon}
+                        </div>
+                        {index < filteredTimelineItems.length - 1 && (
+                          <div className="timeline-item-connector" />
+                        )}
+                      </div>
+                      <div className="timeline-item-content">
+                        <div className="timeline-item-header">
+                          <strong style={{ color: item.color }}>
+                            {item.title}
+                          </strong>
+                          <span className="timeline-item-time">
+                            {formatTimelineTime(item.timestamp)}
+                          </span>
+                        </div>
+                        <p className="timeline-item-subtitle">{item.subtitle}</p>
+                        <div className="timeline-item-badges">
+                          {item.isUnread && (
+                            <span className="timeline-badge unread">未读</span>
+                          )}
+                          {item.anomalyLevel && item.anomalyLabel && item.anomalyColor && (
+                            <span
+                              className="timeline-badge anomaly"
+                              style={{ 
+                                background: `${item.anomalyColor}20`, 
+                                color: item.anomalyColor 
+                              }}
+                            >
+                              {item.anomalyLabel}
+                            </span>
+                          )}
+                          {item.isRecorded && (
+                            <span className="timeline-badge recorded">📼 已录制</span>
+                          )}
+                          {item.stationNames.length > 0 && (
+                            <span className="timeline-badge station">
+                              📻 {item.stationNames.join(" · ")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="timeline-item-arrow">▶</span>
+                    </article>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

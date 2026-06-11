@@ -43,6 +43,15 @@ function getStationName(id: string): string {
   return stationNameMap[id] || id;
 }
 
+function isContentRecorded(stationIds: string[], title: string, tapes: SignalTape[]): boolean {
+  return tapes.some((tape) => {
+    if (!stationIds.includes(tape.stationId)) return false;
+    if (tape.scheduleName && tape.scheduleName.includes(title)) return true;
+    if (title && tape.content.includes(title.slice(0, 20))) return true;
+    return false;
+  });
+}
+
 function getStoryChapterStationIds(chapter: StoryChapter): string[] {
   const map: Record<string, string[]> = {
     prologue: ["rain", "salt", "train", "green"],
@@ -64,7 +73,8 @@ function getStoryChapterStationIds(chapter: StoryChapter): string[] {
 
 function buildStoryItems(
   chapters: StoryChapter[],
-  storylineSave: StorylineSave
+  storylineSave: StorylineSave,
+  tapes: SignalTape[]
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
 
@@ -74,6 +84,7 @@ function buildStoryItems(
     const unlockedAt = storylineSave.unlockedAt[chapter.id] || 0;
     const stationIds = getStoryChapterStationIds(chapter);
     const stationNames = stationIds.map(getStationName);
+    const isRecorded = isContentRecorded(stationIds, chapter.title, tapes);
 
     const firstUnreadFragment = chapter.fragments.find(
       (f) => !storylineSave.readFragments.includes(f.id)
@@ -94,6 +105,7 @@ function buildStoryItems(
       isUnread: !allRead,
       stationIds,
       stationNames,
+      isRecorded,
       target: {
         type: "story",
         chapterId: chapter.id,
@@ -107,7 +119,8 @@ function buildStoryItems(
 
 function buildDailyItems(
   broadcasts: DailyBroadcast[],
-  dailySave: DailyBroadcastSave
+  dailySave: DailyBroadcastSave,
+  tapes: SignalTape[]
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
 
@@ -116,6 +129,7 @@ function buildDailyItems(
 
     const discoveredAt = dailySave.discoveredAt[broadcast.id] || 0;
     const stationNames = broadcast.stationIds.map(getStationName);
+    const isRecorded = isContentRecorded(broadcast.stationIds, broadcast.title, tapes);
 
     const firstUnreadFragment = broadcast.fragments.find(
       (f) => !dailySave.readFragments.includes(f.id)
@@ -139,6 +153,7 @@ function buildDailyItems(
       anomalyColor: getAnomalyLevelColor(broadcast.anomalyLevel),
       stationIds: broadcast.stationIds,
       stationNames,
+      isRecorded,
       target: {
         type: "daily",
         broadcastId: broadcast.id,
@@ -218,10 +233,11 @@ export function buildTimeline(
   puzzleSave: SignalPuzzleSave,
   tapeSave: SignalTapeSave
 ): TimelineItem[] {
-  const storyItems = buildStoryItems(storyChapters, storylineSave);
-  const dailyItems = buildDailyItems(dailyBroadcasts, dailySave);
+  const tapes = tapeSave.tapes;
+  const storyItems = buildStoryItems(storyChapters, storylineSave, tapes);
+  const dailyItems = buildDailyItems(dailyBroadcasts, dailySave, tapes);
   const puzzleItems = buildPuzzleItems(signalPuzzles, puzzleSave);
-  const tapeItems = buildTapeItems(tapeSave.tapes);
+  const tapeItems = buildTapeItems(tapes);
 
   const allItems = [...storyItems, ...dailyItems, ...puzzleItems, ...tapeItems];
 

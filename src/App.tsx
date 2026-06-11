@@ -3541,24 +3541,18 @@ export default function App() {
                         <p className="timeline-item-subtitle">{item.subtitle}</p>
                         <div className="timeline-item-badges">
                           {item.isUnread && (
-                            <span className="timeline-badge unread">未读</span>
+                            <span className="timeline-badge timeline-badge-unread">未读</span>
                           )}
-                          {item.anomalyLevel && item.anomalyLabel && item.anomalyColor && (
-                            <span
-                              className="timeline-badge anomaly"
-                              style={{ 
-                                background: `${item.anomalyColor}20`, 
-                                color: item.anomalyColor 
-                              }}
-                            >
+                          {item.anomalyLevel && item.anomalyLabel && (
+                            <span className={`timeline-badge timeline-badge-${item.anomalyLevel}`}>
                               {item.anomalyLabel}
                             </span>
                           )}
                           {item.isRecorded && (
-                            <span className="timeline-badge recorded">📼 已录制</span>
+                            <span className="timeline-badge timeline-badge-recorded">📼 已录制</span>
                           )}
                           {item.stationNames.length > 0 && (
-                            <span className="timeline-badge station">
+                            <span className="timeline-badge timeline-badge-station">
                               📻 {item.stationNames.join(" · ")}
                             </span>
                           )}

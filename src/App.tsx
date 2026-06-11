@@ -76,6 +76,9 @@ import {
   getSolvedVisibleCount,
   formatSolvedTime,
   getUnsolvedPuzzles,
+  incrementAttempt,
+  getAttemptCount,
+  getCurrentHint,
   type SignalPuzzle,
   type SignalPuzzleSave,
   type SequencePuzzleData,
@@ -735,6 +738,16 @@ export default function App() {
     [activePuzzleId]
   );
 
+  const activePuzzleAttemptCount = useMemo(() => {
+    if (!activePuzzle) return 0;
+    return getAttemptCount(puzzleSave, activePuzzle.id);
+  }, [activePuzzle, puzzleSave]);
+
+  const activePuzzleHint = useMemo(() => {
+    if (!activePuzzle) return null;
+    return getCurrentHint(activePuzzle, activePuzzleAttemptCount);
+  }, [activePuzzle, activePuzzleAttemptCount]);
+
   const unsolvedCount = unsolvedPuzzles.length;
 
   useEffect(() => {
@@ -802,6 +815,7 @@ export default function App() {
       setNewPuzzleToast(activePuzzle);
       setTimeout(() => setNewPuzzleToast(null), 4000);
     } else {
+      setPuzzleSave((current) => incrementAttempt(current, activePuzzle.id));
       setPuzzleError("答案不对，再想想看？");
     }
   }
@@ -815,6 +829,7 @@ export default function App() {
       setNewPuzzleToast(activePuzzle);
       setTimeout(() => setNewPuzzleToast(null), 4000);
     } else {
+      setPuzzleSave((current) => incrementAttempt(current, activePuzzle.id));
       setPuzzleError("顺序不对，再调整一下？");
     }
   }
@@ -828,6 +843,7 @@ export default function App() {
       setNewPuzzleToast(activePuzzle);
       setTimeout(() => setNewPuzzleToast(null), 4000);
     } else {
+      setPuzzleSave((current) => incrementAttempt(current, activePuzzle.id));
       setPuzzleError("顺序不对，重新排列试试？");
     }
   }
@@ -2811,7 +2827,6 @@ export default function App() {
 
               {activePuzzle.data.type === "sequence" && (
                 <div className="puzzle-sequence-area">
-                  <p className="puzzle-sequence-hint">{activePuzzle.data.hint}</p>
                   <div className="puzzle-sequence-items">
                     {sequenceOrder.map((itemId, index) => {
                       const seqData = activePuzzle.data as SequencePuzzleData;
@@ -2847,7 +2862,6 @@ export default function App() {
 
               {activePuzzle.data.type === "frequency" && (
                 <div className="puzzle-frequency-area">
-                  <p className="puzzle-frequency-hint">{activePuzzle.data.hint}</p>
                   <div className="puzzle-frequency-selected">
                     <p className="puzzle-frequency-label">已选择的顺序：</p>
                     <div className="puzzle-frequency-selected-list">
@@ -2902,7 +2916,22 @@ export default function App() {
                 </div>
               )}
 
+              {activePuzzleHint && (
+                <div className="puzzle-hint-box">
+                  <span className="puzzle-hint-label">💡 提示</span>
+                  <p className="puzzle-hint-text">{activePuzzleHint}</p>
+                </div>
+              )}
+
               {puzzleError && <p className="puzzle-error">{puzzleError}</p>}
+
+              <div className="puzzle-attempt-info">
+                {activePuzzleAttemptCount > 0 && (
+                  <span className="puzzle-attempt-count">
+                    已尝试 {activePuzzleAttemptCount} 次
+                  </span>
+                )}
+              </div>
 
               <button
                 className="puzzle-submit-btn"
@@ -2933,6 +2962,26 @@ export default function App() {
                 <h3 className="puzzle-reward-title" style={{ color: activePuzzle.color }}>
                   {activePuzzle.reward.title}
                 </h3>
+              </div>
+              <div className="puzzle-stats">
+                <div className="puzzle-stat-item">
+                  <span className="puzzle-stat-icon">⏰</span>
+                  <div>
+                    <p className="puzzle-stat-label">解题时间</p>
+                    <p className="puzzle-stat-value">
+                      {formatSolvedTime(puzzleSave.solvedAt[activePuzzle.id])}
+                    </p>
+                  </div>
+                </div>
+                <div className="puzzle-stat-item">
+                  <span className="puzzle-stat-icon">🎯</span>
+                  <div>
+                    <p className="puzzle-stat-label">尝试次数</p>
+                    <p className="puzzle-stat-value">
+                      {getAttemptCount(puzzleSave, activePuzzle.id)} 次
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="puzzle-reward-content">
                 {activePuzzle.reward.content.split("\n").map((paragraph, idx) => (

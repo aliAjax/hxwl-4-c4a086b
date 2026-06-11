@@ -15,6 +15,7 @@ export type MorsePuzzleData = {
   type: "morse";
   morseCode: string;
   hint?: string;
+  hints?: string[];
   answer: string;
 };
 
@@ -23,6 +24,7 @@ export type SequencePuzzleData = {
   items: { id: string; name: string; icon: string; description: string }[];
   correctOrder: string[];
   hint?: string;
+  hints?: string[];
 };
 
 export type FrequencyPuzzleData = {
@@ -30,6 +32,7 @@ export type FrequencyPuzzleData = {
   options: { id: string; freq: string; name: string; icon: string; color: string }[];
   correctOrder: string[];
   hint?: string;
+  hints?: string[];
 };
 
 export type PuzzleData = MorsePuzzleData | SequencePuzzleData | FrequencyPuzzleData;
@@ -53,9 +56,10 @@ export type SignalPuzzleSave = {
   solvedPuzzles: string[];
   solvedAt: Record<string, number>;
   attemptedPuzzles: string[];
+  attemptCounts: Record<string, number>;
 };
 
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 const STORAGE_KEY = "hxwl-4-signal-puzzles";
 
 const stationNameMap: Record<string, string> = {
@@ -84,6 +88,11 @@ export const signalPuzzles: SignalPuzzle[] = [
       type: "morse",
       morseCode: "··· --- · ···",
       hint: "长的是 — ，短的是 · 。试着把它们拼成字母。",
+      hints: [
+        "长的是 — ，短的是 · 。试着把它们拼成字母。",
+        "这段电码有三个字母，第一个字母是 S。",
+        "第二个字母是 O，第三个字母又是 S。合起来是国际通用求救信号。"
+      ],
       answer: "SOS",
     },
     reward: {
@@ -132,6 +141,11 @@ export const signalPuzzles: SignalPuzzle[] = [
       ],
       correctOrder: ["button", "letter", "umbrella", "flower"],
       hint: "纽扣是最早出现的，花是最后出现的。信出现在伞之前。",
+      hints: [
+        "纽扣是最早出现的，花是最后出现的。信出现在伞之前。",
+        "第一个是纽扣，最后一个是花。中间还有两样东西。",
+        "顺序是：纽扣 → 信 → 伞 → 花。试着调整一下顺序吧。"
+      ],
     },
     reward: {
       title: "排列正确 · 时间的痕迹",
@@ -160,6 +174,11 @@ export const signalPuzzles: SignalPuzzle[] = [
       correctOrder: ["freq-green", "freq-salt", "freq-train", "freq-rain"],
       hint:
         "从最低到最高？不对。植物最先转向的是它所在的温室，然后是最远的雨棚。它在按照某种顺序问候每一个电台。",
+      hints: [
+        "从最低到最高？不对。植物最先转向的是它所在的温室，然后是最远的雨棚。它在按照某种顺序问候每一个电台。",
+        "第一个是温室低语，最后一个是雨棚旧讯号。中间还有两个电台。",
+        "顺序是：温室低语 → 盐湖观测站 → 末班列车台 → 雨棚旧讯号。"
+      ],
     },
     reward: {
       title: "频率共鸣 · 墙后的声音",
@@ -187,6 +206,7 @@ export function loadPuzzleSave(): SignalPuzzleSave {
       solvedPuzzles: data.solvedPuzzles || [],
       solvedAt: data.solvedAt || {},
       attemptedPuzzles: data.attemptedPuzzles || [],
+      attemptCounts: data.attemptCounts || {},
     };
   } catch {
     return createNewSave();
@@ -199,17 +219,31 @@ function createNewSave(): SignalPuzzleSave {
     solvedPuzzles: [],
     solvedAt: {},
     attemptedPuzzles: [],
+    attemptCounts: {},
   };
 }
 
 function migrateSave(
   data: Partial<SignalPuzzleSave> & { version?: number }
 ): SignalPuzzleSave {
+  const version = data.version || 0;
+  let attemptCounts: Record<string, number> = { ...(data.attemptCounts || {}) };
+
+  if (version < 2) {
+    const attempted = data.attemptedPuzzles || [];
+    for (const pid of attempted) {
+      if (!attemptCounts[pid]) {
+        attemptCounts[pid] = 1;
+      }
+    }
+  }
+
   return {
     version: STORAGE_VERSION,
     solvedPuzzles: data.solvedPuzzles || [],
     solvedAt: data.solvedAt || {},
     attemptedPuzzles: data.attemptedPuzzles || [],
+    attemptCounts,
   };
 }
 
@@ -283,6 +317,7 @@ export function solvePuzzle(
   if (save.solvedPuzzles.includes(puzzleId)) return save;
 
   const now = Date.now();
+  const currentCount = save.attemptCounts[puzzleId] || 0;
   return {
     ...save,
     solvedPuzzles: [...save.solvedPuzzles, puzzleId],
@@ -290,18 +325,57 @@ export function solvePuzzle(
     attemptedPuzzles: save.attemptedPuzzles.includes(puzzleId)
       ? save.attemptedPuzzles
       : [...save.attemptedPuzzles, puzzleId],
+    attemptCounts: {
+      ...save.attemptCounts,
+      [puzzleId]: currentCount,
+    },
   };
 }
 
-export function attemptPuzzle(
+export function incrementAttempt(
   save: SignalPuzzleSave,
   puzzleId: string
 ): SignalPuzzleSave {
-  if (save.attemptedPuzzles.includes(puzzleId)) return save;
+  const currentCount = save.attemptCounts[puzzleId] || 0;
+  const wasAttempted = save.attemptedPuzzles.includes(puzzleId);
   return {
     ...save,
-    attemptedPuzzles: [...save.attemptedPuzzles, puzzleId],
+    attemptedPuzzles: wasAttempted
+      ? save.attemptedPuzzles
+      : [...save.attemptedPuzzles, puzzleId],
+    attemptCounts: {
+      ...save.attemptCounts,
+      [puzzleId]: currentCount + 1,
+    },
   };
+}
+
+export function getAttemptCount(
+  save: SignalPuzzleSave,
+  puzzleId: string
+): number {
+  return save.attemptCounts[puzzleId] || 0;
+}
+
+export function getCurrentHint(
+  puzzle: SignalPuzzle,
+  attemptCount: number
+): string | null {
+  const data = puzzle.data;
+  const hints = data.hints || [];
+
+  if (attemptCount <= 0) return null;
+
+  const hintIndex = Math.min(attemptCount - 1, hints.length - 1);
+  if (hintIndex >= 0 && hints[hintIndex]) {
+    return hints[hintIndex];
+  }
+
+  if (data.hint && attemptCount >= 1) {
+    return data.hint;
+  }
+
+  return null;
 }
 
 export function checkMorseAnswer(puzzle: SignalPuzzle, userAnswer: string): boolean {
